@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import tqdm
 
 
 # Variables
@@ -7,13 +8,14 @@ u_inj = 1.0  # Water injection speed
 S_or = 0.1  # Oil rest-saturation
 S_wc = 0.1  # Water capillary saturation
 L = 10  # Total length
-dx = 0.1  # distance step
-t_tot = 1  # Total time
-dt = 0.01  # time step
-phi = 0.2  # Porosity
+dx = 0.01  # distance step
+t_tot = 0.1  # Total time
+phi = 0.1  # Porosity
+
+dt = phi* dx/u_inj/2  # time step
 # Moeten worden gefinetuned:
-mu_w = 1
-mu_o = 1
+mu_w = 1.e-3
+mu_o = 0.4
 kappa = 1
 k_rw0 = 1
 k_ro0 = 1
@@ -43,30 +45,39 @@ def df_dSw(S_w):
 
 # Code
 N = int(L/dx)
+time_N = int(t_tot / dt)
 S_w = np.ones(N) * S_wc
 S_w[0] = 1 - S_or
 S_w_all = [S_w]
 
-t = 0
-while t < t_tot:
+print("L =", L)
+print("dx=", dx)
+print("T =", t_tot)
+print("dt=", dt)
+
+for t in tqdm.tqdm(range(time_N)):
     newS_w = np.copy(S_w)
     for i in range(1, N-1):
         dSw_dx = (-S_w[i-1] + S_w[i+1]) / (2 * dx)
         dS_w = 0.1
-        df_dSw2 = (-f_w(S_w[i] - dS_w) + f_w(S_w[i] + dS_w)) / (2 * dS_w)
+        # implementation using direct calculation of df/dSw
         # newS_w[i] = S_w[i] - dt * u_inj * df_dSw(S_w[i]) * dSw_dx
-        #newS_w[i] = S_w[i] - dt * u_inj * df_dSw2 * dSw_dx
+
+        # implementation using numerical approximation of df/dSw
+        # df_dSw2 = (-f_w(S_w[i] - dS_w) + f_w(S_w[i] + dS_w)) / (2 * dS_w)
+        # newS_w[i] = S_w[i] - dt * u_inj * df_dSw2 * dSw_dx
 
         # implementation of Lax–Friedrichs Method
         newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx*u_inj/phi *(f_w(S_w[i+1])-f_w(S_w[i-1]))
+        # newS_w[i] = (S_w[i-1]+S_w[i])/2 - dt/2/dx*u_inj/phi *(f_w(S_w[i])-f_w(S_w[i-1]))
+
     S_w = newS_w
     S_w_all.append(newS_w)
-    t += dt
 
 S_w_all = np.matrix(S_w_all)
 plt.matshow(S_w_all)
 plt.colorbar()
 plt.show()
 
-plt.plot(S_w)
+plt.plot(np.linspace(0, L, N), S_w)
 plt.show()

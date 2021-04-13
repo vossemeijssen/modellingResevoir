@@ -7,7 +7,7 @@ import tqdm
 u_inj = 1.0  # Water injection speed
 S_or = 0.1  # Oil rest-saturation
 S_wc = 0.1  # Water capillary saturation
-L = 10  # Total length
+L = 5  # Total length
 dx = 0.01  # distance step
 t_tot = 1  # Total time
 phi = 0.1  # Porosity
@@ -18,8 +18,8 @@ mu_o = 0.4
 kappa = 1
 k_rw0 = 1
 k_ro0 = 1
-n_w = 5  # >=1
-n_o = 5  # >=1
+n_w = 4  # >=1
+n_o = 2  # >=1
 
 
 # Functions
@@ -61,7 +61,7 @@ def magic_function(x):
 
 S_w_shock = bisection(magic_function, (S_wc, 1 - S_or), 100)
 shockspeed = df_dSw(S_w_shock)
-dt = phi* dx/u_inj/shockspeed  # time step
+dt = dx/shockspeed  # time step
 
 # Code
 N = int(L/dx)
@@ -98,7 +98,8 @@ for t in tqdm.tqdm(range(time_N)):
     S_w_all.append(newS_w)
 
 S_w_all = np.matrix(S_w_all)
-plt.matshow(S_w_all)
+# plt.matshow(S_w_all)
+plt.contour(S_w_all, np.linspace(0.8, 0.9, 100))
 plt.colorbar()
 plt.show()
 

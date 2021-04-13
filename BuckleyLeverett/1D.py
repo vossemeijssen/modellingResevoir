@@ -8,11 +8,11 @@ u_inj = 1.0  # Water injection speed
 S_or = 0.1  # Oil rest-saturation
 S_wc = 0.1  # Water capillary saturation
 L = 10  # Total length
-dx = 0.01  # distance step
+dx = 0.05  # distance step
 t_tot = 0.1  # Total time
 phi = 0.1  # Porosity
 
-dt = phi* dx/u_inj/2  # time step
+dt = phi* dx/u_inj/10  # time step
 # Moeten worden gefinetuned:
 mu_w = 1.e-3
 mu_o = 0.4
@@ -52,8 +52,10 @@ S_w_all = [S_w]
 
 print("L =", L)
 print("dx=", dx)
+print("N =", N)
 print("T =", t_tot)
 print("dt=", dt)
+print("tN=", time_N)
 
 for t in tqdm.tqdm(range(time_N)):
     newS_w = np.copy(S_w)
@@ -68,7 +70,7 @@ for t in tqdm.tqdm(range(time_N)):
         # newS_w[i] = S_w[i] - dt * u_inj * df_dSw2 * dSw_dx
 
         # implementation of Lax–Friedrichs Method
-        newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx*u_inj/phi *(f_w(S_w[i+1])-f_w(S_w[i-1]))
+        newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx *(f_w(S_w[i+1])-f_w(S_w[i-1]))
         # newS_w[i] = (S_w[i-1]+S_w[i])/2 - dt/2/dx*u_inj/phi *(f_w(S_w[i])-f_w(S_w[i-1]))
 
     S_w = newS_w

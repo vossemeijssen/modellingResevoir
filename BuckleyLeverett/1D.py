@@ -8,22 +8,21 @@ u_inj = 1.0  # Water injection speed
 S_or = 0.1  # Oil rest-saturation
 S_wc = 0.1  # Water capillary saturation
 L = 10  # Total length
-dx = 0.05  # distance step
-t_tot = 0.1  # Total time
+dx = 0.01  # distance step
+t_tot = 1  # Total time
 phi = 0.1  # Porosity
 
-dt = phi* dx/u_inj/10  # time step
 # Moeten worden gefinetuned:
 mu_w = 1.e-3
 mu_o = 0.4
 kappa = 1
 k_rw0 = 1
 k_ro0 = 1
-n_w = 1  # >=1
-n_o = 1  # >=1
+n_w = 5  # >=1
+n_o = 5  # >=1
 
 
-
+# Functions
 def D_cap(S_w):
     return 0
 
@@ -39,9 +38,30 @@ def df_dSw(S_w):
     C_o = k_ro0 / mu_o
     C_w = k_rw0 / mu_w
     S_wn = (S_w - S_wc) / (1 - S_or - S_wc)
-    # df_dSwn = C_w * C_o / (C_o + C_w * (S_wn)**n_w / ((1 - S_wn) ** n_o)) * (n_o / (1-S_wn) + n_w /S_wn)
-    df_dSwn = C_w * C_o / (C_o * (S_wn - 1) - C_w * S_wn)**2
+    df_dSwn = C_w * C_o / (C_o + C_w * (S_wn)**n_w / ((1 - S_wn) ** n_o)) * (n_o / (1-S_wn) + n_w /S_wn)
+    # df_dSwn = C_w * C_o / (C_o * (S_wn - 1) - C_w * S_wn)**2
     return df_dSwn / (1 - S_or - S_wc)
+
+
+def bisection(f, startpoints, n):
+    x1 = startpoints[0]
+    x2 = startpoints[1]
+    for i in range(n):
+        x3 = (x1 + x2)/ 2
+        if f(x3) > 0:
+            x1 = x3
+        else:
+            x2 = x3
+    return (x1 + x2) / 2
+
+
+def magic_function(x):
+    return df_dSw(x) - (f_w(x) - f_w(S_wc))/(x - S_wc)
+
+
+S_w_shock = bisection(magic_function, (S_wc, 1 - S_or), 100)
+shockspeed = df_dSw(S_w_shock)
+dt = phi* dx/u_inj/shockspeed  # time step
 
 # Code
 N = int(L/dx)
@@ -50,6 +70,7 @@ S_w = np.ones(N) * S_wc
 S_w[0] = 1 - S_or
 S_w_all = [S_w]
 
+print("Shockspeed =", shockspeed)
 print("L =", L)
 print("dx=", dx)
 print("N =", N)

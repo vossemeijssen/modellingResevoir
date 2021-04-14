@@ -52,6 +52,6 @@ S_w_all = np.matrix(S_w_all)
 plt.contour(S_w_all, np.linspace(0.8, 0.9, 100))
 plt.colorbar()
 plt.show()
-
+plt.figure()
 plt.plot(np.linspace(0, L, N), S_w)
 plt.show()

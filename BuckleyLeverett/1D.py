@@ -5,10 +5,6 @@ from reservoirModule import *
 
 
 
-
-
-
-
 S_w_shock = bisection(magic_function, (S_wc, 1 - S_or), 100)
 shockspeed = df_dSw(S_w_shock)
 dt = dx/shockspeed  # time step
@@ -48,8 +44,8 @@ for t in tqdm.tqdm(range(time_N)):
     S_w_all.append(newS_w)
 
 S_w_all = np.matrix(S_w_all)
-# plt.matshow(S_w_all)
-plt.contour(S_w_all, np.linspace(0.8, 0.9, 100))
+plt.matshow(S_w_all)
+#plt.contour(S_w_all, np.linspace(0.8, 0.9, 100))
 plt.colorbar()
 plt.show()
 

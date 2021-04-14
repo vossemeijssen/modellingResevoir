@@ -3,7 +3,7 @@ u_inj = 1.0  # Water injection speed
 S_or = 0.1  # Oil rest-saturation
 S_wc = 0.1  # Water capillary saturation
 L = 5  # Total length
-dx = 0.01  # distance step
+dx = 0.1  # distance step
 t_tot = 1  # Total time
 phi = 0.1  # Porosity
 
@@ -34,7 +34,8 @@ def df_dSw(S_w):
     S_wn = (S_w - S_wc) / (1 - S_or - S_wc)
     # df_dSwn = C_w * C_o / (C_o + C_w * (S_wn)**n_w / ((1 - S_wn) ** n_o)) * (n_o / (1-S_wn) + n_w /S_wn)
     # df_dSwn = C_w * C_o / (C_o * (S_wn - 1) - C_w * S_wn)**2
-    df_dSwn = kappa * C_o*(1-S_wn)**(n_o-1)*(n_w*(1-S_wn)-n_o)*C_w*S_wn**(n_w-1)/(C_w*S_wn**n_w+C_o*(1-S_wn)**n_o)**2
+    # df_dSwn = C_o*(1-S_wn)**(n_o-1)*(n_w*(1-S_wn)-n_o)*C_w*S_wn**(n_w-1)/(C_w*S_wn**n_w+C_o*(1-S_wn)**n_o)**2
+    df_dSwn = - (C_w*( -n_w* C_o* S_wn**(-n_w-1) * (1-S_wn)**n_o - n_o*C_o*S_wn**(-n_w) * (1-S_wn)**(n_o-1)))/(C_o*S_wn**(-n_w) * (1-S_wn)**n_o + C_w)**2
     return df_dSwn / (1 - S_or - S_wc)
 
 

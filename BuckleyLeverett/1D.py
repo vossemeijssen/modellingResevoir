@@ -8,7 +8,7 @@ def magic_function(x):
 
 S_w_shock = bisection(magic_function, (S_wc, 1 - S_or), 100)
 shockspeed = u_inj/phi*df_dSw(S_w_shock)
-dt = dx/shockspeed  # time step
+dt = dx/shockspeed*0.8  # time step
 
 # Code
 N = int(L/dx)

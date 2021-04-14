@@ -2,8 +2,8 @@
 u_inj = 1.0  # Water injection speed
 S_or = 0.1  # Oil rest-saturation
 S_wc = 0.1  # Water capillary saturation
-L = 5  # Total length
-dx = 0.01  # distance step
+L = 50  # Total length
+dx = 0.1  # distance step
 t_tot = 1  # Total time
 phi = 0.1  # Porosity
 

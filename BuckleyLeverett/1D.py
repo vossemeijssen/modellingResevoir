@@ -5,8 +5,8 @@ from reservoirModule import *
 
 
 S_w_shock = bisection(magic_function, (S_wc, 1 - S_or), 100)
-shockspeed = df_dSw(S_w_shock)
-dt = dx/shockspeed/u_inj*phi  # time step
+shockspeed = u_inj/phi*df_dSw(S_w_shock)
+dt = dx/shockspeed  # time step
 
 # Code
 N = int(L/dx)
@@ -36,18 +36,50 @@ for t in tqdm.tqdm(range(time_N)):
         # newS_w[i] = S_w[i] - dt * u_inj * df_dSw2 * dSw_dx
 
         # implementation of Lax–Friedrichs Method
-        newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx*u_inj/phi *(f_w(S_w[i+1])-f_w(S_w[i-1]))
+        newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx *u_inj/phi *(f_w(S_w[i+1])-f_w(S_w[i-1]))
         # newS_w[i] = (S_w[i-1]+S_w[i])/2 - dt/2/dx*u_inj/phi *(f_w(S_w[i])-f_w(S_w[i-1]))
 
     S_w = newS_w
     S_w_all.append(newS_w)
 
-S_w_all = np.matrix(S_w_all)
-plt.matshow(S_w_all)
-#plt.contour(S_w_all, np.linspace(0.8, 0.9, 100))
-plt.colorbar()
-plt.show()
+# S_w_all = np.matrix(S_w_all)
+# plt.matshow(S_w_all)
+# #plt.contour(S_w_all, np.linspace(0.8, 0.9, 100))
+# plt.colorbar()
+# plt.show()
 plt.figure()
+print(len(S_w))
 plt.plot(np.linspace(0, L, N), S_w)
-x=np.linspace(0.1,0.9,100);plt.plot(u_inj/phi*df_dSw(x),x)
+
+# Analytic solution:
+# outer part:
+# phi*dS_w/dt + du_w/dx = 0, S_w(0, t) = 1, S_w(x, 0) = S_wc
+# Gives dS_w/deta = 0 or eta = uinj/phi * df_w/dS_w
+x = np.linspace(0.9, 0.1 ,1000)
+y = [u_inj/phi*df_dSw(xi)*t_tot for xi in x]
+
+analytical_solution_x = []
+analytical_solution_y = []
+shockpoint = shockspeed*t_tot
+before_shock = True
+i = 0
+while before_shock:
+    if y[i] < shockpoint:
+        analytical_solution_x.append(y[i])
+        analytical_solution_y.append(x[i])
+    else:
+        analytical_solution_x.append(shockpoint)
+        analytical_solution_y.append(S_w_shock)
+        analytical_solution_x.append(shockpoint)
+        analytical_solution_y.append(S_wc)
+        analytical_solution_x.append(L)
+        analytical_solution_y.append(S_wc)
+        before_shock = False
+    i += 1
+
+plt.plot(analytical_solution_x, analytical_solution_y)
+plt.legend(['Numerical approximation', 'Analytical solution'])
+plt.title("Saturation of water")
+plt.xlabel('Length (meter)')
+plt.ylabel("Water saturation")
 plt.show()

@@ -4,7 +4,6 @@ import tqdm
 from reservoirModule import *
 
 
-
 S_w_shock = bisection(magic_function, (S_wc, 1 - S_or), 100)
 shockspeed = df_dSw(S_w_shock)
 dt = dx/shockspeed  # time step
@@ -48,6 +47,6 @@ plt.matshow(S_w_all)
 #plt.contour(S_w_all, np.linspace(0.8, 0.9, 100))
 plt.colorbar()
 plt.show()
-
+plt.figure()
 plt.plot(np.linspace(0, L, N), S_w)
 plt.show()

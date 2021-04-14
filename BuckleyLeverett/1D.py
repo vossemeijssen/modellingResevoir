@@ -6,7 +6,7 @@ from reservoirModule import *
 
 S_w_shock = bisection(magic_function, (S_wc, 1 - S_or), 100)
 shockspeed = df_dSw(S_w_shock)
-dt = dx/shockspeed  # time step
+dt = dx/shockspeed/u_inj*phi  # time step
 
 # Code
 N = int(L/dx)
@@ -36,7 +36,7 @@ for t in tqdm.tqdm(range(time_N)):
         # newS_w[i] = S_w[i] - dt * u_inj * df_dSw2 * dSw_dx
 
         # implementation of Lax–Friedrichs Method
-        newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx *(f_w(S_w[i+1])-f_w(S_w[i-1]))
+        newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx*u_inj/phi *(f_w(S_w[i+1])-f_w(S_w[i-1]))
         # newS_w[i] = (S_w[i-1]+S_w[i])/2 - dt/2/dx*u_inj/phi *(f_w(S_w[i])-f_w(S_w[i-1]))
 
     S_w = newS_w
@@ -49,4 +49,5 @@ plt.colorbar()
 plt.show()
 plt.figure()
 plt.plot(np.linspace(0, L, N), S_w)
+x=np.linspace(0.1,0.9,100);plt.plot(u_inj/phi*df_dSw(x),x)
 plt.show()

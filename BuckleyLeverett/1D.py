@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import tqdm
 from reservoirModule import *
 
+def magic_function(x):
+    return df_dSw(x) - (f_w(x) - f_w(S_wc))/(x - S_wc)
 
 S_w_shock = bisection(magic_function, (S_wc, 1 - S_or), 100)
 shockspeed = u_inj/phi*df_dSw(S_w_shock)

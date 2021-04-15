@@ -34,7 +34,7 @@ S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
 shockspeed = c.u_inj/c.phi*df_dSw(S_w_shock, c)
 dt = dx/shockspeed  # time step
 
-# Code
+
 N = int(L/dx)
 M = int(W/dx)
 time_N = int(t_tot / dt)
@@ -86,3 +86,20 @@ plt.plot(np.linspace(0,L,N),S_w[:,0])
 plt.scatter(Amplitude+shockspeed*t_tot,0)
 plt.show()
 
+
+# fig = plt.figure()
+# X = np.arange(0, N)
+# Y = np.arange(0, N)
+# X, Y = np.meshgrid(X, Y)
+# ax = fig.gca(projection='3d')
+# surf = ax.plot_surface(Y, X, S_w, rstride=1, cmap="rainbow", cstride=1, antialiased=False)
+# fig.colorbar(surf)
+# plt.show()
+import plotly.graph_objects as go
+fig = go.Figure(data=[go.Surface(z=S_w)])
+
+# fig.update_layout(title='Saturation after ' + str(t_tot) + "s", autosize=True,
+#                   width=N, height=N,
+#                   margin=dict(l=65, r=50, b=65, t=90))
+
+fig.show()

@@ -4,39 +4,40 @@ import tqdm
 from reservoirModule import *
 
 # Variables
-u_inj = 1.0  # Water injection speed
-S_or = 0.1  # Oil rest-saturation
-S_wc = 0.1  # Water capillary saturation
 L = 1  # Total length
 dx = 0.005  # distance step
 t_tot = 0.02  # Total time
-phi = 0.1  # Porosity
 
 # Moeten worden gefinetuned:
-mu_w = 1.e-3
-mu_o = 0.04
-kappa = 1
-k_rw0 = 1
-k_ro0 = 1
-n_w = 4  # >=1
-n_o = 2  # >=1
+c = Constants(
+    phi = 0.1,  # Porosity
+    u_inj = 1.0,  # Water injection speed
+    mu_w = 1.e-3,
+    mu_o = 0.04,
+    kappa = 1,
+    k_rw0 = 1,
+    k_ro0 = 1,
+    n_w = 4,  # >=1
+    n_o = 2,  # >=1
+    S_or = 0.1,  # Oil rest-saturation
+    S_wc = 0.1 )
 
 
-def magic_function(x):
-    return df_dSw(x) - (f_w(x) - f_w(S_wc))/(x - S_wc)
+def magic_function(x, c):
+    return df_dSw(x, c) - (f_w(x, c) - f_w(c.S_wc, c))/(x - c.S_wc)
 
-S_w_shock = bisection(magic_function, (S_wc, 1 - S_or), 100)
-shockspeed = u_inj/phi*df_dSw(S_w_shock)
+S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
+shockspeed = c.u_inj/c.phi*df_dSw(S_w_shock, c)
 dt = dx/shockspeed  # time step
 k = 0.3/2
 # Code
 N = int(L/dx)
 time_N = int(t_tot / dt)
-S_w = np.ones((N,N)) * S_wc
+S_w = np.ones((N,N)) * c.S_wc
 for j in range(N):
     M = 1+int(5*(1+np.sin(j*k)))
     for i in range(M):
-        S_w[i,j] = 1 - S_or
+        S_w[i,j] = 1 - c.S_or
 S_w_all = [S_w]
 
 plt.contourf(S_w)
@@ -59,9 +60,9 @@ for t in tqdm.tqdm(range(time_N)):
         for i in range(M, N-1):
             # implementation of Lax–Friedrichs Method
             newS_w[i,j] = ( S_w[i-1,j-1] + S_w[i+1,j-1] + S_w[i-1,j+1] + S_w[i+1,j+1] ) / 4 + \
-                        dt/8/dx*u_inj/phi * (
-                                f_w(S_w[i - 1, j - 1]) + 2 * f_w(S_w[i - 1, j]) + f_w(S_w[i - 1, j + 1]) +
-                            -   f_w(S_w[i + 1, j - 1]) - 2 * f_w(S_w[i + 1, j]) - f_w(S_w[i + 1, j + 1])
+                        dt/8/dx*c.u_inj/c.phi * (
+                                f_w(S_w[i - 1, j - 1], c) + 2 * f_w(S_w[i - 1, j], c) + f_w(S_w[i - 1, j + 1], c) +
+                            -   f_w(S_w[i + 1, j - 1], c) - 2 * f_w(S_w[i + 1, j], c) - f_w(S_w[i + 1, j + 1], c)
                         )
 
     S_w = newS_w

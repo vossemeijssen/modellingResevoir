@@ -5,9 +5,9 @@ import math
 from reservoirModule import *
 from scipy.sparse import  diags
 
-dx = int(5)
-L  = int(20)
-W  = int(20)
+dx = 5
+L  = 15
+W  = 15
 
 c = Constants(
     phi = 0.1,  # Porosity
@@ -28,7 +28,8 @@ c = Constants(
 N = int(L/dx)+1
 M = int(W/dx)+1
 
-Sw = np.zeros(N*M)
+Sw = np.random.rand(N*M)
+print(Sw)
 p  = np.zeros(N*M)
 
 dl_tot = np.zeros(N*M)
@@ -64,7 +65,15 @@ for i in range(K):
 
 D = np.delete(D,list,axis=1)
 D = np.delete(D,list,axis=0)
-print(D)
-# plt.show(?)
+l = np.ones((N-2)*(M-2))
+l[-1] = 1
+D = np.vstack([D,l])
+# print(D)
+l = np.zeros(((N-2)*(M-2))+1)
+l[-1] = 1
+
+p = np.linalg.lstsq(D,l, rcond=None)
+p = p[0]
+
 
 

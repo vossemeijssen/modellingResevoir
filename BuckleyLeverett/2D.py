@@ -5,8 +5,8 @@ from reservoirModule import *
 
 # Variables
 L = 10  # Total length
-dx = 0.05  # distance step
-t_tot = 0.1  # Total time
+dx = 0.1  # distance step
+t_tot = 0.3  # Total time
 
 # Moeten worden gefinetuned:
 c = Constants(
@@ -29,7 +29,7 @@ def magic_function(x, c):
 S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
 shockspeed = c.u_inj/c.phi*df_dSw(S_w_shock, c)
 dt = dx/shockspeed  # time step
-k = 2               # mode number
+k = 5               # mode number
 Amplitude = 1       # in meters
 # Code
 N = int(L/dx)
@@ -78,3 +78,20 @@ plt.plot(np.linspace(0,L,N),S_w[:,1])
 plt.scatter(shockspeed*t_tot,0)
 plt.show()
 
+
+# fig = plt.figure()
+# X = np.arange(0, N)
+# Y = np.arange(0, N)
+# X, Y = np.meshgrid(X, Y)
+# ax = fig.gca(projection='3d')
+# surf = ax.plot_surface(Y, X, S_w, rstride=1, cmap="rainbow", cstride=1, antialiased=False)
+# fig.colorbar(surf)
+# plt.show()
+import plotly.graph_objects as go
+fig = go.Figure(data=[go.Surface(z=S_w)])
+
+# fig.update_layout(title='Saturation after ' + str(t_tot) + "s", autosize=True,
+#                   width=N, height=N,
+#                   margin=dict(l=65, r=50, b=65, t=90))
+
+fig.show()

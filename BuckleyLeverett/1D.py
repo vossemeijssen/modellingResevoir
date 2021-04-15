@@ -27,7 +27,7 @@ def magic_function(x, c):
 
 S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
 shockspeed = c.u_inj/c.phi*df_dSw(S_w_shock, c)
-dt = dx/shockspeed*0.8  # time step
+dt = dx/shockspeed  # time step
 
 # Code
 N = int(L/dx)
@@ -49,15 +49,9 @@ for t in tqdm.tqdm(range(time_N)):
     for i in range(1, N-1):
         dSw_dx = (-S_w[i-1] + S_w[i+1]) / (2 * dx)
         dS_w = 0.1
-        # implementation using direct calculation of df/dSw
-        # newS_w[i] = S_w[i] - dt * u_inj * df_dSw(S_w[i]) * dSw_dx
-
-        # implementation using numerical approximation of df/dSw
-        # df_dSw2 = (-f_w(S_w[i] - dS_w) + f_w(S_w[i] + dS_w)) / (2 * dS_w)
-        # newS_w[i] = S_w[i] - dt * u_inj * df_dSw2 * dSw_dx
 
         # implementation of Lax–Friedrichs Method
-        newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx *c.u_inj/c.phi *(f_w(S_w[i+1], c)-f_w(S_w[i-1], c))
+        newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx *c.u_inj/c.phi *(f_w(S_w[i+1], c)-f_w(S_w[i-1], c)) + D_cap(S_w[i])*dt/dx**2*(S_w[i-1]-2*S_w[i]+S_w[i+1])
         # newS_w[i] = (S_w[i-1]+S_w[i])/2 - dt/2/dx*u_inj/phi *(f_w(S_w[i])-f_w(S_w[i-1]))
 
     S_w = newS_w
@@ -76,7 +70,7 @@ plt.plot(np.linspace(0, L, N), S_w)
 # outer part:
 # phi*dS_w/dt + du_w/dx = 0, S_w(0, t) = 1, S_w(x, 0) = S_wc
 # Gives dS_w/deta = 0 or eta = uinj/phi * df_w/dS_w
-x = np.linspace(0.9, 0.1 ,1000)
+x = np.linspace(0.9, 0.1 ,1000, endpoint=False)
 y = [c.u_inj/c.phi*df_dSw(xi, c)*t_tot for xi in x]
 
 analytical_solution_x = []

@@ -4,8 +4,8 @@ import tqdm
 from reservoirModule import *
 
 # Variables
-L = 1  # Total length
-dx = 0.005  # distance step
+L = 2  # Total length
+dx = 0.05  # distance step
 t_tot = 0.02  # Total time
 
 # Moeten worden gefinetuned:

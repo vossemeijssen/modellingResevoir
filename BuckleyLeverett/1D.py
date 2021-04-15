@@ -4,7 +4,7 @@ import tqdm
 from reservoirModule import *
 
 # Variables
-L = 1  # Total length
+L = 10  # Total length
 dx = 0.005  # distance step
 t_tot = 0.02  # Total time
 
@@ -27,7 +27,7 @@ def magic_function(x, c):
 
 S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
 shockspeed = c.u_inj/c.phi*df_dSw(S_w_shock, c)
-dt = dx/shockspeed*0.8  # time step
+dt = dx/shockspeed  # time step
 
 # Code
 N = int(L/dx)

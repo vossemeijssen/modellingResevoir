@@ -22,7 +22,7 @@ c = Constants(
     S_or = 0.1,  # Oil rest-saturation
     S_wc = 0.1,
     sigma = 0.1,
-    labda=2)
+    labda=3)
 
 def magic_function(x, c):
     return df_dSw(x, c) - (f_w(x, c) - f_w(c.S_wc, c))/(x - c.S_wc)
@@ -95,7 +95,7 @@ while before_shock:
     i += 1
 
 plt.plot(analytical_solution_x, analytical_solution_y)
-plt.legend(['Numerical approximation', 'Analytical solution'])
+plt.legend(['Numerical approximation with capillary diffusion', 'Analytical solution without capillary diffusion'])
 plt.title("Saturation of water")
 plt.xlabel('Length (meter)')
 plt.ylabel("Water saturation")

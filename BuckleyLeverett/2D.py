@@ -29,14 +29,14 @@ def magic_function(x, c):
 S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
 shockspeed = c.u_inj/c.phi*df_dSw(S_w_shock, c)
 dt = dx/shockspeed  # time step
-k = 0.9/2
-
+k = 3
+Amplitude = 1
 # Code
 N = int(L/dx)
 time_N = int(t_tot / dt)
 S_w = np.ones((N,N)) * c.S_wc
 for j in range(N):
-    M = 1+int(5*(1+np.sin(j*k)))
+    M = 1+int(Amplitude/dx*(1+np.sin(j*k*dx)))
     for i in range(M):
         S_w[i,j] = 1 - c.S_or
 S_w_all = [S_w]

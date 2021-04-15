@@ -1,12 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import tqdm
+import math
 from reservoirModule import *
 from scipy.sparse import  diags
 
-dx = 5
-L  = 10
-W  = 10
+dx = int(5)
+L  = int(20)
+W  = int(20)
 
 c = Constants(
     phi = 0.1,  # Porosity
@@ -56,10 +57,10 @@ for i in range(K):
         list.append(i)
     if i%N == N-1:
         list.append(i)
-    # if i/N == 0:
-    #     list.append(i)
-    # if i/N == N-1:
-    #     list.append(i)
+    if math.floor(i/N) == 0:
+        list.append(i)
+    if math.floor(i/N) == N-1:
+        list.append(i)
 
 D = np.delete(D,list,axis=1)
 D = np.delete(D,list,axis=0)

@@ -9,7 +9,7 @@ def magic_function(x):
 S_w_shock = bisection(magic_function, (S_wc, 1 - S_or), 100)
 shockspeed = u_inj/phi*df_dSw(S_w_shock)
 dt = dx/shockspeed  # time step
-k = 0.1
+k = 0.3/2
 # Code
 N = int(L/dx)
 time_N = int(t_tot / dt)
@@ -37,12 +37,10 @@ for t in tqdm.tqdm(range(time_N)):
     newS_w = np.copy(S_w)
     for j in range(1, N - 1):
         M = 1 + int(5 * (1 + np.sin(j * k)))
-        for i in range(M+1, N-1):
-
-
+        for i in range(M, N-1):
             # implementation of Lax–Friedrichs Method
-            newS_w[i] = ( S_w[i-1,j-1] + S_w[i+1,j-1] + S_w[i-1,j+1] + S_w[i+1,j+1] ) / 4 + \
-                        dt/6/dx *u_inj/phi *(
+            newS_w[i,j] = ( S_w[i-1,j-1] + S_w[i+1,j-1] + S_w[i-1,j+1] + S_w[i+1,j+1] ) / 4 + \
+                        dt/8/dx*u_inj/phi * (
                                 f_w(S_w[i - 1, j - 1]) + 2 * f_w(S_w[i - 1, j]) + f_w(S_w[i - 1, j + 1]) +
                             -   f_w(S_w[i + 1, j - 1]) - 2 * f_w(S_w[i + 1, j]) - f_w(S_w[i + 1, j + 1])
                         )
@@ -52,8 +50,10 @@ for t in tqdm.tqdm(range(time_N)):
 
 
 print(len(S_w))
-#plt.contourf(S_w)
+plt.contourf(S_w)
+plt.show()
+plt.figure()
 plt.plot(np.linspace(0,L,N),S_w[:,1])
-#plt.scatter(shockspeed*t_tot,0)
+plt.scatter(shockspeed*t_tot,0)
 plt.show()
 

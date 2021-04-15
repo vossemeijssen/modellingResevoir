@@ -5,7 +5,7 @@ from reservoirModule import *
 
 # Variables
 L = 1  # Total length
-dx = 0.005  # distance step
+dx = 0.001  # distance step
 t_tot = 0.02  # Total time
 
 # Moeten worden gefinetuned:
@@ -20,7 +20,9 @@ c = Constants(
     n_w = 4,  # >=1
     n_o = 2,  # >=1
     S_or = 0.1,  # Oil rest-saturation
-    S_wc = 0.1 )
+    S_wc = 0.1,
+    sigma = 0.1,
+    labda=2)
 
 def magic_function(x, c):
     return df_dSw(x, c) - (f_w(x, c) - f_w(c.S_wc, c))/(x - c.S_wc)
@@ -51,7 +53,7 @@ for t in tqdm.tqdm(range(time_N)):
         dS_w = 0.1
 
         # implementation of Lax–Friedrichs Method
-        newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx *c.u_inj/c.phi *(f_w(S_w[i+1], c)-f_w(S_w[i-1], c)) + D_cap(S_w[i])*dt/dx**2*(S_w[i-1]-2*S_w[i]+S_w[i+1])
+        newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx *c.u_inj/c.phi *(f_w(S_w[i+1], c)-f_w(S_w[i-1], c)) - D_cap(S_w[i], c)*dt/dx*(S_w[i-1]-2*S_w[i]+S_w[i+1])
         # newS_w[i] = (S_w[i-1]+S_w[i])/2 - dt/2/dx*u_inj/phi *(f_w(S_w[i])-f_w(S_w[i-1]))
 
     S_w = newS_w

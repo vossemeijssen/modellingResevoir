@@ -1,22 +1,3 @@
-# Variables
-u_inj = 1.0  # Water injection speed
-S_or = 0.1  # Oil rest-saturation
-S_wc = 0.1  # Water capillary saturation
-L = 1  # Total length
-dx = 0.005  # distance step
-t_tot = 0.02  # Total time
-phi = 0.1  # Porosity
-
-# Moeten worden gefinetuned:
-mu_w = 1.e-3
-mu_o = 0.04
-kappa = 1
-k_rw0 = 1
-k_ro0 = 1
-n_w = 4  # >=1
-n_o = 2  # >=1
-
-
 # Functions
 def D_cap(S_w):
     return 0

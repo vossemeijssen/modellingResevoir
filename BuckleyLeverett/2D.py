@@ -5,9 +5,9 @@ from reservoirModule import *
 
 # Variables
 L = 10  # Total length
-W = 10   # Total Width
-dx = 0.1  # distance step
-t_tot = 0.1  # Total time
+W = 2   # Total Width
+dx = 0.05  # distance step
+t_tot = 0.3  # Total time
 # initial disturbance
 k = 1               # number of waves
 Amplitude = 0.5       # amplitude in meters
@@ -40,7 +40,7 @@ M = int(W/dx)
 time_N = int(t_tot / dt)
 S_w = np.ones((N,M)) * c.S_wc
 for j in range(M):
-    M_BC = 1+int(Amplitude/dx*(1+np.sin(2*np.pi*k*j*dx/W)))
+    M_BC = 3+int(Amplitude/dx*(1+np.cos(2*np.pi*k*j*dx/W)))
     for i in range(M_BC):
         S_w[i,j] = 1 - c.S_or
 S_w_all = [S_w]
@@ -61,7 +61,7 @@ print("tN=", time_N)
 for t in tqdm.tqdm(range(time_N)):
     newS_w = np.copy(S_w)
     for j in range(0, M):
-        M_BC = 1+int(Amplitude/dx*(1+np.sin(2*np.pi*k*j*dx/L)))
+        M_BC = 3+int(Amplitude/dx*(1+np.cos(2*np.pi*k*j*dx/W)))
         for i in range(M_BC, N-1):
             # implementation of Lax–Friedrichs Method
             #newS_w[i,j] = ( S_w[i-1,j-1] + S_w[i+1,j-1] + S_w[i-1,(j+1)%M] + S_w[i+1,(j+1)%M] ) / 4 + \
@@ -69,10 +69,32 @@ for t in tqdm.tqdm(range(time_N)):
             #                    f_w(S_w[i - 1, j - 1], c) + 6 * f_w(S_w[i - 1, j], c) + f_w(S_w[i - 1, (j + 1)%M], c) +
             #                -   f_w(S_w[i + 1, j - 1], c) - 6 * f_w(S_w[i + 1, j], c) - f_w(S_w[i + 1, (j + 1)%M], c)
             #            )
-            newS_w[i, j] = (S_w[i - 1, j] + S_w[i + 1, j] + S_w[i, (j - 1) % M] + S_w[i, (j + 1) % M]) / 4 + \
-                           dt / 16 / dx * c.u_inj / c.phi * (f_w(S_w[i - 1, j - 1], c) + 6 * f_w(S_w[i - 1, j], c) + f_w(S_w[i - 1, (j + 1) % M],c) +
-                                   -   f_w(S_w[i + 1, j - 1], c) - 6 * f_w(S_w[i + 1, j], c) - f_w(S_w[i + 1, (j + 1) % M], c)
+            ## total x diffusion beun
+            newS_w[i, j] = (4 * S_w[i - 1, j    ] +     S_w[i - 1, (j + 1) % M] + S_w[i - 1, j - 1] +
+                            4 * S_w[i + 1, j    ] +     S_w[i + 1, (j + 1) % M] + S_w[i + 1, j - 1] +
+                            4 * S_w[i    , j - 1] + 4 * S_w[i    , (j + 1) % M]) / 20 + \
+                           dt / 16 / dx * c.u_inj / c.phi * (
+                                   f_w(S_w[i - 1, j - 1], c) + 6 * f_w(S_w[i - 1, j], c) + f_w(S_w[i - 1, (j + 1) % M], c) +
+                               -   f_w(S_w[i + 1, j - 1], c) - 6 * f_w(S_w[i + 1, j], c) - f_w(S_w[i + 1, (j + 1) % M], c)
                            )
+            ## beun directional diffusion
+            # newS_w[i, j] = (8 * S_w[i - 1, j] + S_w[i - 1, (j + 1) % M] + S_w[i - 1, j - 1] +
+            #                 8 * S_w[i + 1, j] + S_w[i + 1, (j + 1) % M] + S_w[i + 1, j - 1] +
+            #                 0 * S_w[i, j - 1] + 0 * S_w[i, (j + 1) % M]) / 20 + \
+            #                dt / 16 / dx * c.u_inj / c.phi * (
+            #                        f_w(S_w[i - 1, j - 1], c) + 6 * f_w(S_w[i - 1, j], c) + f_w(S_w[i - 1, (j + 1) % M],
+            #                                                                                    c) +
+            #                        -   f_w(S_w[i + 1, j - 1], c) - 6 * f_w(S_w[i + 1, j], c) - f_w(
+            #                    S_w[i + 1, (j + 1) % M], c)
+            #                )
+            ## simple diffusion
+            # newS_w[i, j] = (S_w[i-1,j] + S_w[i+1,j]) / 2 + \
+            #                dt / 16 / dx * c.u_inj / c.phi * (
+            #                        f_w(S_w[i - 1, j - 1], c) + 6 * f_w(S_w[i - 1, j], c) + f_w(S_w[i - 1, (j + 1) % M],
+            #                                                                                    c) +
+            #                        -   f_w(S_w[i + 1, j - 1], c) - 6 * f_w(S_w[i + 1, j], c) - f_w(
+            #                    S_w[i + 1, (j + 1) % M], c)
+            #                )
 
     S_w = newS_w
     S_w_all.append(newS_w)
@@ -83,7 +105,7 @@ plt.contourf(S_w)
 plt.show()
 plt.figure()
 plt.plot(np.linspace(0,L,N),S_w[:,0])
-plt.scatter(Amplitude+shockspeed*t_tot,0)
+plt.scatter(2*Amplitude+shockspeed*t_tot,0)
 plt.show()
 
 

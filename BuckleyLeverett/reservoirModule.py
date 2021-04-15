@@ -23,6 +23,24 @@ def f_w(S_w, c):
     l_o = c.kappa / c.mu_o * c.k_ro0 * (1-S_wn) ** c.n_o
     return l_w / (l_w + l_o)
 
+def l_w(S_w, c):
+    S_wn = (S_w - c.S_wc) / (1 - c.S_or - c.S_wc)
+    return c.kappa / c.mu_w * c.k_rw0 * (S_wn) ** c.n_w
+
+def dl_w(S_w, c):
+    S_wn = (S_w - c.S_wc) / (1 - c.S_or - c.S_wc)
+    return c.kappa / c.mu_w * c.k_rw0 * c.n_w * (S_wn) ** (c.n_w-1) / (1 - c.S_or - c.S_wc)
+
+def l_o(S_w, c):
+    S_wn = (S_w - c.S_wc) / (1 - c.S_or - c.S_wc)
+    return c.kappa / c.mu_o * c.k_ro0 *  (1-S_wn) ** c.n_o
+
+def dl_o(S_w, c):
+    S_wn = (S_w - c.S_wc) / (1 - c.S_or - c.S_wc)
+    return c.kappa / c.mu_o * c.k_ro0 * c.n_o * (1-S_wn) ** (c.n_o - 1) / (1 - c.S_or - c.S_wc)
+
+def l_t(S_w,c):
+    return l_w(S_w,c) + l_o(S_w,c)
 
 def df_dSw(S_w, c):
     C_o = c.k_ro0 / c.mu_o

@@ -72,7 +72,7 @@ plt.plot(np.linspace(0, L, N), S_w)
 # outer part:
 # phi*dS_w/dt + du_w/dx = 0, S_w(0, t) = 1, S_w(x, 0) = S_wc
 # Gives dS_w/deta = 0 or eta = uinj/phi * df_w/dS_w
-x = np.linspace(0.9, 0.1 ,1000, endpoint=False)
+x = np.linspace(0.9, 0.1 ,N, endpoint=False)
 y = [c.u_inj/c.phi*df_dSw(xi, c)*t_tot for xi in x]
 
 analytical_solution_x = []
@@ -100,3 +100,21 @@ plt.title("Saturation of water")
 plt.xlabel('Length (meter)')
 plt.ylabel("Water saturation")
 plt.show()
+
+### Calculate the total amount of water in the system for every timepoint:
+    
+#Riemann sum at time t
+m_w = dx * (np.sum(S_w_all, axis=1) * c.phi)
+plt.figure()
+plt.plot(np.linspace(0,t_tot, len(m_w)), m_w, label='Water')
+plt.xlabel('Time [s]')
+plt.ylabel('Mass')
+plt.title('Injected water over time')
+
+#Average injection flux:
+print('Average water injection speed = ', (m_w[-1]-m_w[0])/t_tot)
+# dx values for analytical solution
+a_dx = np.array(analytical_solution_x[1:]) -np.array(analytical_solution_x[:-1])
+analytical_mass = sum(np.multiply(np.array(analytical_solution_y)[:-1] - c.S_wc, np.array(analytical_solution_x[1:]) -np.array(analytical_solution_x[:-1])))*c.phi
+
+print('Average water injection speed for the analytical solution= ', analytical_mass/t_tot)

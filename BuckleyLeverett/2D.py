@@ -4,9 +4,9 @@ import tqdm
 from reservoirModule import *
 
 # Variables
-L = 1  # Total length
-dx = 0.005  # distance step
-t_tot = 0.02  # Total time
+L = 10  # Total length
+dx = 0.1  # distance step
+t_tot = 0.1  # Total time
 
 # Moeten worden gefinetuned:
 c = Constants(
@@ -59,7 +59,7 @@ for t in tqdm.tqdm(range(time_N)):
         M = 1 + int(5 * (1 + np.sin(j * k)))
         for i in range(M, N-1):
             # implementation of Lax–Friedrichs Method
-            newS_w[i,j] = ( S_w[i-1,j-1] + S_w[i+1,j-1] + S_w[i-1,j+1] + S_w[i+1,j+1] ) / 4 + \
+            newS_w[i,j] = ( S_w[i-1,j] + S_w[i+1,j] + S_w[i,j+1] + S_w[i,j-1] ) / 4 + \
                         dt/8/dx*c.u_inj/c.phi * (
                                 f_w(S_w[i - 1, j - 1], c) + 2 * f_w(S_w[i - 1, j], c) + f_w(S_w[i - 1, j + 1], c) +
                             -   f_w(S_w[i + 1, j - 1], c) - 2 * f_w(S_w[i + 1, j], c) - f_w(S_w[i + 1, j + 1], c)

@@ -5,7 +5,7 @@ from reservoirModule import *
 
 # Variables
 L = 10  # Total length
-dx = 0.1  # distance step
+dx = 0.05  # distance step
 t_tot = 0.1  # Total time
 
 # Moeten worden gefinetuned:
@@ -29,14 +29,14 @@ def magic_function(x, c):
 S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
 shockspeed = c.u_inj/c.phi*df_dSw(S_w_shock, c)
 dt = dx/shockspeed  # time step
-k = 3
-Amplitude = 1
+k = 2               # mode number
+Amplitude = 1       # in meters
 # Code
 N = int(L/dx)
 time_N = int(t_tot / dt)
 S_w = np.ones((N,N)) * c.S_wc
 for j in range(N):
-    M = 1+int(Amplitude/dx*(1+np.sin(j*k*dx)))
+    M = 1+int(Amplitude/dx*(1+np.sin(2*np.pi*k*j*dx/L)))
     for i in range(M):
         S_w[i,j] = 1 - c.S_or
 S_w_all = [S_w]
@@ -57,7 +57,7 @@ print("tN=", time_N)
 for t in tqdm.tqdm(range(time_N)):
     newS_w = np.copy(S_w)
     for j in range(1, N - 1):
-        M = 1+int(Amplitude/dx*(1+np.sin(j*k*dx)))
+        M = 1+int(Amplitude/dx*(1+np.sin(2*np.pi*k*j*dx/L)))
         for i in range(M, N-1):
             # implementation of Lax–Friedrichs Method
             newS_w[i,j] = ( S_w[i-1,j] + S_w[i+1,j] + S_w[i,j+1] + S_w[i,j-1] ) / 4 + \

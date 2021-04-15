@@ -1,5 +1,7 @@
+from math import sqrt
+
 class Constants:
-    def __init__(self, phi, u_inj, mu_w, mu_o, kappa, k_rw0, k_ro0, n_w, n_o, S_or, S_wc):
+    def __init__(self, phi, u_inj, mu_w, mu_o, kappa, k_rw0, k_ro0, n_w, n_o, S_or, S_wc, sigma,labda):
         self.phi = phi
         self.u_inj = u_inj
         self.mu_w = mu_w
@@ -11,10 +13,12 @@ class Constants:
         self.n_o = n_o
         self.S_or = S_or  # Oil rest-saturation
         self.S_wc = S_wc  # Water capillary saturation
+        self.sigma = sigma
+        self.labda = labda
 
 # Functions
-def D_cap(S_w):
-    return 0
+def D_cap(S_w,c):
+    return c.sigma*sqrt(c.phi/c.kappa)*S_w**(-1/c.labda)
 
 
 def f_w(S_w, c):

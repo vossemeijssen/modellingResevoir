@@ -5,7 +5,7 @@ from reservoirModule import *
 
 # Variables
 L = 1  # Total length
-dx = 0.001  # distance step
+dx = 0.00005  # distance step
 t_tot = 0.02  # Total time
 
 # Moeten worden gefinetuned:
@@ -48,14 +48,15 @@ print("tN=", time_N)
 
 for t in tqdm.tqdm(range(time_N)):
     newS_w = np.copy(S_w)
-    for i in range(1, N-1):
-        dSw_dx = (-S_w[i-1] + S_w[i+1]) / (2 * dx)
-        dS_w = 0.1
+    # for i in range(1, N-1):
+    #     dSw_dx = (-S_w[i-1] + S_w[i+1]) / (2 * dx)
+    #     dS_w = 0.1
 
-        # implementation of Lax–Friedrichs Method
-        newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx *c.u_inj/c.phi *(f_w(S_w[i+1], c)-f_w(S_w[i-1], c)) - D_cap(S_w[i], c)*dt/dx*(S_w[i-1]-2*S_w[i]+S_w[i+1])
-        # newS_w[i] = (S_w[i-1]+S_w[i])/2 - dt/2/dx*u_inj/phi *(f_w(S_w[i])-f_w(S_w[i-1]))
-
+    #     # implementation of Lax–Friedrichs Method
+    #     newS_w[i] = (S_w[i-1]+S_w[i+1])/2 - dt/2/dx *c.u_inj/c.phi *(f_w(S_w[i+1], c)-f_w(S_w[i-1], c)) - D_cap(S_w[i], c)*dt/dx/2*(-S_w[i-1]+S_w[i+1])
+    #     # newS_w[i] = (S_w[i-1]+S_w[i])/2 - dt/2/dx*u_inj/phi *(f_w(S_w[i])-f_w(S_w[i-1]))
+    
+    newS_w[1:-1] = (S_w[:-2] + S_w[2:])/2 - dt/dx/2 * c.u_inj/c.phi * (f_w(S_w[2:], c) - f_w(S_w[:-2], c)) - dt/dx/2*D_cap(S_w[1:-1], c)* (S_w[2:] - S_w[:-2])
     S_w = newS_w
     S_w_all.append(newS_w)
 

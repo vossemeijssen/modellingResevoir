@@ -8,10 +8,10 @@ from scipy.sparse import  diags
 
 # initial variables
 dx = 0.5
-W  = 6
+W  = 2
 L  = 10
-dt = 0.01
-t_tot = 0.1
+dt = 0.005
+t_tot = 0.05
 
 c = Constants(
     phi = 0.1,  # Porosity
@@ -46,25 +46,26 @@ Sw = Sw.reshape(M,N-2)
 #     p = calc_pressure(Sw,c)
 #     Swt = calc_Swt(Sw,p,c)
 #     Sw = Sw + dt*Swt
-for t in tqdm.tqdm(range(int(t_tot/dt))):
-    Sw0 = Sw
-    error = 0.1
-    while error >= 1e-5:
-        p = calc_pressure(Sw,c)
-        Swt = calc_Swt(Sw,p,c)
-        SwNew = Sw0 + dt*Swt
-        error = np.linalg.norm(SwNew-Sw)
-        Sw = SwNew
+# for t in tqdm.tqdm(range(int(t_tot/dt))):
+#     Sw0 = Sw
+#     error = 0.1
+#     while error >= 1e-3:
+#         p = calc_pressure(Sw,c)
+#         Swt = calc_Swt(Sw,p,c)
+#         SwNew = Sw0 + dt*Swt
+#         error = np.linalg.norm(SwNew-Sw)
+#         Sw = SwNew
 
 
 # Swt[0:N-2] = 0
+p = calc_pressure(Sw,c)
+Swt = calc_Swt(Sw,p,c)
 
-
-# import plotly.graph_objects as go
-# fig = go.Figure(data=[go.Surface( z=p.reshape(M,N-2),x = np.linspace(0,W,N-2), y = np.linspace(0,L,M))])
-# fig.show()
-# # plot
 import plotly.graph_objects as go
-fig = go.Figure(data=[go.Surface( z=Sw,x = np.linspace(0,W,N-2), y = np.linspace(0,L,M))])
+fig = go.Figure(data=[go.Surface( z=p.reshape(M,N-2),x = np.linspace(0,W,N-2), y = np.linspace(0,L,M))])
+fig.show()
+# plot
+import plotly.graph_objects as go
+fig = go.Figure(data=[go.Surface( z=Swt,x = np.linspace(0,W,N-2), y = np.linspace(0,L,M))])
 fig.show()
 

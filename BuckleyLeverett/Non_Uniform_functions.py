@@ -40,10 +40,10 @@ def calc_pressure(Sw,c):
             dl_totdx[i] = 1 / 2 / c.dx * (dl_tot[(i + 1)] - dl_tot[(i - 1)])
 
         if math.floor(i/N) == M-1:
-            dl_totdy[i] = 1 / c.dx * (dl_tot[(i)] - dl_tot[(i - N)])
+            dl_totdy[i] = 1 / c.dx * (3*dl_tot[(i)] - 4 * dl_tot[(i - N)] + dl_tot[(i - 2 *N)])
         elif math.floor(i/N) == 0:
             # note that we have a less accurate calculation here
-            dl_totdy[i] = 1 / c.dx * (dl_tot[i+N] - dl_tot[(i)])
+            dl_totdy[i] = 1 /2 / c.dx * (-dl_tot[i+2*N]+ 4*dl_tot[i+N] - 3* dl_tot[(i)])
         else:
             dl_totdy[i] = 1 / 2 / c.dx * (dl_tot[i + N] - dl_tot[i-N])
 
@@ -147,13 +147,13 @@ def calc_Swt(Sw,p,c):
         else:
             dl_totdx[i] = 1 / 2 / c.dx * (dl_tot[(i + 1)] - dl_tot[(i - 1)])
 
-        if math.floor(i / N) == M - 1:
-            dl_totdy[i] = 1 / c.dx * (dl_tot[(i)] - dl_tot[(i - N)])
-        elif math.floor(i / N) == 0:
+        if math.floor(i/N) == M-1:
+            dl_totdy[i] = 1 / c.dx * (3*dl_tot[(i)] - 4 * dl_tot[(i - N)] + dl_tot[(i - 2 *N)])
+        elif math.floor(i/N) == 0:
             # note that we have a less accurate calculation here
-            dl_totdy[i] = 1 / c.dx * (dl_tot[i + N] - dl_tot[(i)])
+            dl_totdy[i] = 1 /2 / c.dx * (-dl_tot[i+2*N]+ 4*dl_tot[i+N] - 3* dl_tot[(i)])
         else:
-            dl_totdy[i] = 1 / 2 / c.dx * (dl_tot[i + N] - dl_tot[i - N])
+            dl_totdy[i] = 1 / 2 / c.dx * (dl_tot[i + N] - dl_tot[i-N])
 
         # set up diagonals
         diagonals = [-4 / c.dx / c.dx * l_tot,

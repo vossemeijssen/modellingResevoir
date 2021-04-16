@@ -1,7 +1,7 @@
 from math import sqrt
 
 class Constants:
-    def __init__(self, phi, u_inj, mu_w, mu_o, kappa, k_rw0, k_ro0, n_w, n_o, S_or, S_wc, sigma,labda):
+    def __init__(self, phi, u_inj, mu_w, mu_o, kappa, k_rw0, k_ro0, n_w, n_o, S_or, S_wc, sigma,labda,dx):
         self.phi = phi
         self.u_inj = u_inj
         self.mu_w = mu_w
@@ -15,6 +15,7 @@ class Constants:
         self.S_wc = S_wc  # Water capillary saturation
         self.sigma = sigma
         self.labda = labda
+        self.dx = dx
 
 # Functions
 def D_cap(S_w,c):
@@ -68,3 +69,4 @@ def bisection(f, startpoints, n, c):
 
 # def magic_function(x, c):
 #     return df_dSw(x) - (f_w(x) - f_w(S_wc))/(x - c.S_wc)
+

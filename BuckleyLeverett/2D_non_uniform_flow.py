@@ -11,7 +11,7 @@ dx = 0.5
 W  = 6
 L  = 10
 dt = 0.01
-t_tot = 1
+t_tot = 0.1
 
 c = Constants(
     phi = 0.1,  # Porosity
@@ -42,13 +42,20 @@ Sw = c.S_wc*np.ones((N-2)*M)
 Sw[0:(N-2)] = 1-c.S_or
 Sw = Sw.reshape(M,N-2)
 
+# for t in tqdm.tqdm(range(int(t_tot/dt))):
+#     p = calc_pressure(Sw,c)
+#     Swt = calc_Swt(Sw,p,c)
+#     Sw = Sw + dt*Swt
 for t in tqdm.tqdm(range(int(t_tot/dt))):
-    p = calc_pressure(Sw,c)
-    Swt = calc_Swt(Sw,p,c)
-    Sw = Sw + dt*Swt
+    Sw0 = Sw
+    error = 0.1
+    while error >= 1e-5:
+        p = calc_pressure(Sw,c)
+        Swt = calc_Swt(Sw,p,c)
+        SwNew = Sw0 + dt*Swt
+        error = np.linalg.norm(SwNew-Sw)
+        Sw = SwNew
 
-
-plt.show()
 
 # Swt[0:N-2] = 0
 

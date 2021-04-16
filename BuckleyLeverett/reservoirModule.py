@@ -18,8 +18,12 @@ class Constants:
         self.dx = dx
 
 # Functions
-def D_cap(S_w,c):
-    return c.sigma*sqrt(c.phi/c.kappa)*S_w**(-1/c.labda)
+def D_cap(S_w, c):
+    S_wn = (S_w - c.S_wc)/(1 - c.S_or - c.S_wc)
+    l_w = c.kappa / c.mu_w * c.k_rw0 * (S_wn) ** c.n_w
+    l_o = c.kappa / c.mu_o * c.k_ro0 * (1-S_wn) ** c.n_o
+    # p_c = c.sigma*sqrt(c.phi/c.kappa)*S_w**(-1/c.labda)
+    return l_w*l_o/(l_w+l_o) * c.sigma / c.labda * sqrt(c.phi / c.kappa) * S_w**(-1/c.labda - 1)
 
 
 def f_w(S_w, c):

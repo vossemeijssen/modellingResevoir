@@ -7,9 +7,11 @@ from Non_Uniform_functions import *
 from scipy.sparse import  diags
 
 # initial variables
-dx = 0.2
-W  = 2
+dx = 0.5
+W  = 6
 L  = 10
+dt = 0.01
+t_tot = 1
 
 c = Constants(
     phi = 0.1,  # Porosity
@@ -40,11 +42,22 @@ Sw = c.S_wc*np.ones((N-2)*M)
 Sw[0:(N-2)] = 1-c.S_or
 Sw = Sw.reshape(M,N-2)
 
-p = calc_pressure(Sw,c)
-Swt = calc_Swt(p,c)
+for t in tqdm.tqdm(range(int(t_tot/dt))):
+    p = calc_pressure(Sw,c)
+    Swt = calc_Swt(Sw,p,c)
+    Sw = Sw + dt*Swt
 
-# plot
+
+plt.show()
+
+# Swt[0:N-2] = 0
+
+
+# import plotly.graph_objects as go
+# fig = go.Figure(data=[go.Surface( z=p.reshape(M,N-2),x = np.linspace(0,W,N-2), y = np.linspace(0,L,M))])
+# fig.show()
+# # plot
 import plotly.graph_objects as go
-fig = go.Figure(data=[go.Surface( z=p.reshape(M,N-2),x = np.linspace(0,W,N-2), y = np.linspace(0,L,M))])
+fig = go.Figure(data=[go.Surface( z=Sw,x = np.linspace(0,W,N-2), y = np.linspace(0,L,M))])
 fig.show()
 

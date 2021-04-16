@@ -5,7 +5,7 @@ import math
 from reservoirModule import *
 from scipy.sparse import  diags
 
-dx = 0.2
+dx = 0.5
 L  = 6
 W  = 10
 
@@ -25,10 +25,10 @@ c = Constants(
     labda = 1)
 
 
-N = int(L/dx)+1
+N = int(L/dx)+2
 M = int(W/dx)+1
-# print("N = ",N)
-# print("M = ",M)
+print("N = ",N)
+print("M = ",M)
 
 
 Sw = c.S_wc*np.ones(N*M)
@@ -43,11 +43,22 @@ dl_totdy = np.zeros(N*M)
 
 K = N*M
 for i in range(K):
-    l_tot[i]  = l_o(Sw[i],c)
+    l_tot[i]  = l_t(Sw[i],c)
     dl_tot[i] = dl_w(Sw[i],c)+dl_o(Sw[i],c)
 for i in range(K):
-    dl_totdx[i] = 1 / 2 / dx * (dl_tot[(i + 1) % K] - dl_tot[(i - 1) % K])
-    dl_totdy[i] = 1 / 2 / dx * (dl_tot[(i + N) % K] - dl_tot[(i - N) % K])
+    if i%N == N-1:
+        dl_totdx[i] = 1 / 2 / dx * (dl_tot[(i + 1-N)] - dl_tot[(i - 1)])
+    elif i%N == 0:
+        dl_totdx[i] = 1 / 2 / dx * (dl_tot[(i + 1)] - dl_tot[(i - 1 + N)])
+    else:
+        dl_totdx[i] = 1 / 2 / dx * (dl_tot[(i + 1)] - dl_tot[(i - 1)])
+
+    if math.floor(i/N) == M-1:
+        dl_totdy[i] = 1 / dx * (dl_tot[(i)] - dl_tot[(i - N)])
+    elif math.floor(i/N) == 0:
+        dl_totdy[i] = 1 / dx * (dl_tot[i+N] - dl_tot[(i)])
+    else:
+        dl_totdy[i] = 1 / 2 / dx * (dl_tot[i + N] - dl_tot[i-N])
 
 
 
@@ -64,30 +75,62 @@ for i in range(K):
         list.append(i)
     elif i%N == N-1:
         list.append(i)
-    elif math.floor(i/N) == 0:
-        list.append(i)
-    elif math.floor(i/N) == M-1:
-        list.append(i)
+    # elif math.floor(i/N) == 0:
+    #     list.append(i)
+    # elif math.floor(i / N) == M-1:
+    #     list.append(i)
+
+
+for j in range(M):
+    index = j*(N) + (N-2)
+    D[j * N + 1    , index]  = (l_tot[index] / dx / dx + dl_totdx[index] / 2 / dx)
+    index = j*(N) + 1
+    D[j * N + N - 2, index]  = (l_tot[index] / dx / dx - dl_totdx[index] / 2 / dx)
+
+for i in range(N):
+    index = i
+    D[index + N, index] = 2 * (l_tot[index] / dx / dx)
+    index = i + (M-1)*(N)
+    D[index - N, index] = 2 * (l_tot[index] / dx / dx)
 
 # print(np.shape(D))
 # print(list)
+# plt.matshow(D)
 
 D = np.delete(D,list,axis=1)
 D = np.delete(D,list,axis=0)
+
 # print(np.shape(D))
-l = np.ones((N-2)*(M-2))
+# plt.matshow(D)
+# plt.show()
+# print(np.shape(D))
+l = np.ones((N-2)*(M))
 l[-1] = 1
 D = np.vstack([D,l])
 # print(D)
-l = np.zeros(((N-2)*(M-2))+1)
-l[-1] = 10
+l = np.zeros(((N-2)*(M))+1)
+l[-1] = 0
+
+for i in range((N-2)*M):
+    if math.floor(i/(N-2)) == 0:
+        index = i%(N-2)+1
+        l[i] = (dl_totdy[index]+2/dx)*c.u_inj/l_w(Sw[index],c)
+    if math.floor(i/(N-2)) == M-1:
+        index = (M-1)*N + i % (N - 2) + 1
+        l[i] = (dl_totdy[index]+2/dx)*c.u_inj/l_t(Sw[index],c)
+
 
 p = np.linalg.lstsq(D,l, rcond=None)
 p = p[0]
 # print(p.reshape(M-2,N-2))
-
-plt.contourf(p.reshape(M-2,N-2))
-plt.matshow(Sw.reshape(M,N))
+#
+# plt.contourf(p.reshape(M,N-2))
+# plt.matshow(Sw.reshape(M,N))
+# plt.show()
+plt.matshow(D)
 plt.show()
 
+import plotly.graph_objects as go
+fig = go.Figure(data=[go.Surface(x = np.linspace(0,W,M), y = np.linspace(0,L,N-2), z=p.reshape(M,N-2))])
+fig.show()
 

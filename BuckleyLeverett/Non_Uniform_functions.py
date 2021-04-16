@@ -103,7 +103,7 @@ def calc_pressure(Sw,c):
             l[i] = (dl_totdy[index] - 2/c.dx*l_tot[index])*c.u_inj/l_w(Sw[index],c)
         if math.floor(i/(N-2)) == M-1:
             index = (M-1)*N + i % (N - 2) + 1
-            l[i] = (dl_totdy[index] - 2/c.dx*l_tot[index])*c.u_inj/l_t(Sw[index],c)
+            l[i] = (dl_totdy[index] + 2/c.dx*l_tot[index])*c.u_inj/l_t(Sw[index],c)
 
     # solve matrix vector product
     p = np.linalg.lstsq(D,l, rcond=None)

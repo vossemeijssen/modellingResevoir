@@ -7,9 +7,11 @@ from Non_Uniform_functions import *
 from scipy.sparse import  diags
 
 # initial variables
-dx = 0.5
-W  = 2
-L  = 10
+N  = 4 + 2  # number of nodes in y direction - two elements on the left and right as dummies
+M  = 20 + 1  # number of nodes in x direction - need to have the pressure for all indices, 0,dx,...,L-dx,L,
+L  = 10.
+W  = L / (M-1) * (N-2)
+dx = L / (M-1)
 dt = 0.005
 t_tot = 0.05
 
@@ -27,20 +29,14 @@ c = Constants(
     S_wc = 0.1,
     sigma = 1,
     labda = 1,
-    dx = 1)
+    dx = dx)
 
-c.dx = dx
-# determine number of elements, note I add two elements on the left and right as dummies,
-N = int(W/dx)+2
-# I add one on the length, as I need to have the pressure for all indices, 0,dx,...,L-dx,L,
-M = int(L/dx)+1
 print("N = ",N)
 print("M = ",M)
 
 # set initial Sw
-Sw = c.S_wc*np.ones((N-2)*M)
-Sw[0:(N-2)] = 1-c.S_or
-Sw = Sw.reshape(M,N-2)
+Sw = c.S_wc*np.ones((M,N-2))
+Sw[0,:] = 1-c.S_or
 
 # for t in tqdm.tqdm(range(int(t_tot/dt))):
 #     p = calc_pressure(Sw,c)

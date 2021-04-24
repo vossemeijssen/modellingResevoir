@@ -62,10 +62,11 @@ p = calc_pressure(Sw,c)
 Swt = calc_Swt(Sw,p,c)
 
 import plotly.graph_objects as go
+import plotly.io as pio
+pio.renderers.default = "browser"
 fig = go.Figure(data=[go.Surface( z=p.reshape(M,N-2),x = np.linspace(0,W,N-2), y = np.linspace(0,L,M))])
 fig.show()
 # plot
-import plotly.graph_objects as go
 fig = go.Figure(data=[go.Surface( z=Swt,x = np.linspace(0,W,N-2), y = np.linspace(0,L,M))])
 fig.show()
 

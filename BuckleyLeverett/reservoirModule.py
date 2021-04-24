@@ -1,7 +1,7 @@
 from math import sqrt
 
 class Constants:
-    def __init__(self, phi, u_inj, mu_w, mu_o, kappa, k_rw0, k_ro0, n_w, n_o, S_or, S_wc, sigma,labda):
+    def __init__(self, phi, u_inj, mu_w, mu_o, kappa, k_rw0, k_ro0, n_w, n_o, S_or, S_wc, sigma,labda,dx):
         self.phi = phi
         self.u_inj = u_inj
         self.mu_w = mu_w
@@ -15,6 +15,7 @@ class Constants:
         self.S_wc = S_wc  # Water capillary saturation
         self.sigma = sigma
         self.labda = labda
+        self.dx = dx
 
 # Functions
 def D_cap(S_w, c):
@@ -31,6 +32,24 @@ def f_w(S_w, c):
     l_o = c.kappa / c.mu_o * c.k_ro0 * (1-S_wn) ** c.n_o
     return l_w / (l_w + l_o)
 
+def l_w(S_w, c):
+    S_wn = (S_w - c.S_wc) / (1 - c.S_or - c.S_wc)
+    return c.kappa / c.mu_w * c.k_rw0 * (S_wn) ** c.n_w
+
+def dl_w(S_w, c):
+    S_wn = (S_w - c.S_wc) / (1 - c.S_or - c.S_wc)
+    return c.kappa / c.mu_w * c.k_rw0 * c.n_w * (S_wn) ** (c.n_w-1) / (1 - c.S_or - c.S_wc)
+
+def l_o(S_w, c):
+    S_wn = (S_w - c.S_wc) / (1 - c.S_or - c.S_wc)
+    return c.kappa / c.mu_o * c.k_ro0 *  (1-S_wn) ** c.n_o
+
+def dl_o(S_w, c):
+    S_wn = (S_w - c.S_wc) / (1 - c.S_or - c.S_wc)
+    return c.kappa / c.mu_o * c.k_ro0 * c.n_o * (1-S_wn) ** (c.n_o - 1) / (1 - c.S_or - c.S_wc)
+
+def l_t(S_w,c):
+    return l_w(S_w,c) + l_o(S_w,c)
 
 def df_dSw(S_w, c):
     C_o = c.k_ro0 / c.mu_o
@@ -54,3 +73,4 @@ def bisection(f, startpoints, n, c):
 
 # def magic_function(x, c):
 #     return df_dSw(x) - (f_w(x) - f_w(S_wc))/(x - c.S_wc)
+

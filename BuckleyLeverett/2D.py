@@ -4,9 +4,13 @@ import tqdm
 from reservoirModule import *
 
 # Variables
-L = 2  # Total length
+L = 10  # Total length
+W = 2   # Total Width
 dx = 0.05  # distance step
-t_tot = 0.02  # Total time
+t_tot = 0.3  # Total time
+# initial disturbance
+k = 1               # number of waves
+Amplitude = 0.5       # amplitude in meters
 
 # Moeten worden gefinetuned:
 c = Constants(
@@ -29,14 +33,15 @@ def magic_function(x, c):
 S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
 shockspeed = c.u_inj/c.phi*df_dSw(S_w_shock, c)
 dt = dx/shockspeed  # time step
-k = 0.3/2
-# Code
+
+
 N = int(L/dx)
+M = int(W/dx)
 time_N = int(t_tot / dt)
-S_w = np.ones((N,N)) * c.S_wc
-for j in range(N):
-    M = 1+int(5*(1+np.sin(j*k)))
-    for i in range(M):
+S_w = np.ones((N,M)) * c.S_wc
+for j in range(M):
+    M_BC = 3+int(Amplitude/dx*(1+np.cos(2*np.pi*k*j*dx/W)))
+    for i in range(M_BC):
         S_w[i,j] = 1 - c.S_or
 S_w_all = [S_w]
 
@@ -55,15 +60,41 @@ print("tN=", time_N)
 
 for t in tqdm.tqdm(range(time_N)):
     newS_w = np.copy(S_w)
-    for j in range(1, N - 1):
-        M = 1 + int(5 * (1 + np.sin(j * k)))
-        for i in range(M, N-1):
+    for j in range(0, M):
+        M_BC = 3+int(Amplitude/dx*(1+np.cos(2*np.pi*k*j*dx/W)))
+        for i in range(M_BC, N-1):
             # implementation of Lax–Friedrichs Method
-            newS_w[i,j] = ( S_w[i-1,j-1] + S_w[i+1,j-1] + S_w[i-1,j+1] + S_w[i+1,j+1] ) / 4 + \
-                        dt/8/dx*c.u_inj/c.phi * (
-                                f_w(S_w[i - 1, j - 1], c) + 2 * f_w(S_w[i - 1, j], c) + f_w(S_w[i - 1, j + 1], c) +
-                            -   f_w(S_w[i + 1, j - 1], c) - 2 * f_w(S_w[i + 1, j], c) - f_w(S_w[i + 1, j + 1], c)
-                        )
+            #newS_w[i,j] = ( S_w[i-1,j-1] + S_w[i+1,j-1] + S_w[i-1,(j+1)%M] + S_w[i+1,(j+1)%M] ) / 4 + \
+            #            dt/16/dx*c.u_inj/c.phi * (
+            #                    f_w(S_w[i - 1, j - 1], c) + 6 * f_w(S_w[i - 1, j], c) + f_w(S_w[i - 1, (j + 1)%M], c) +
+            #                -   f_w(S_w[i + 1, j - 1], c) - 6 * f_w(S_w[i + 1, j], c) - f_w(S_w[i + 1, (j + 1)%M], c)
+            #            )
+            ## total x diffusion beun
+            newS_w[i, j] = (4 * S_w[i - 1, j    ] +     S_w[i - 1, (j + 1) % M] + S_w[i - 1, j - 1] +
+                            4 * S_w[i + 1, j    ] +     S_w[i + 1, (j + 1) % M] + S_w[i + 1, j - 1] +
+                            4 * S_w[i    , j - 1] + 4 * S_w[i    , (j + 1) % M]) / 20 + \
+                           dt / 16 / dx * c.u_inj / c.phi * (
+                                   f_w(S_w[i - 1, j - 1], c) + 6 * f_w(S_w[i - 1, j], c) + f_w(S_w[i - 1, (j + 1) % M], c) +
+                               -   f_w(S_w[i + 1, j - 1], c) - 6 * f_w(S_w[i + 1, j], c) - f_w(S_w[i + 1, (j + 1) % M], c)
+                           )
+            ## beun directional diffusion
+            # newS_w[i, j] = (8 * S_w[i - 1, j] + S_w[i - 1, (j + 1) % M] + S_w[i - 1, j - 1] +
+            #                 8 * S_w[i + 1, j] + S_w[i + 1, (j + 1) % M] + S_w[i + 1, j - 1] +
+            #                 0 * S_w[i, j - 1] + 0 * S_w[i, (j + 1) % M]) / 20 + \
+            #                dt / 16 / dx * c.u_inj / c.phi * (
+            #                        f_w(S_w[i - 1, j - 1], c) + 6 * f_w(S_w[i - 1, j], c) + f_w(S_w[i - 1, (j + 1) % M],
+            #                                                                                    c) +
+            #                        -   f_w(S_w[i + 1, j - 1], c) - 6 * f_w(S_w[i + 1, j], c) - f_w(
+            #                    S_w[i + 1, (j + 1) % M], c)
+            #                )
+            ## simple diffusion
+            # newS_w[i, j] = (S_w[i-1,j] + S_w[i+1,j]) / 2 + \
+            #                dt / 16 / dx * c.u_inj / c.phi * (
+            #                        f_w(S_w[i - 1, j - 1], c) + 6 * f_w(S_w[i - 1, j], c) + f_w(S_w[i - 1, (j + 1) % M],
+            #                                                                                    c) +
+            #                        -   f_w(S_w[i + 1, j - 1], c) - 6 * f_w(S_w[i + 1, j], c) - f_w(
+            #                    S_w[i + 1, (j + 1) % M], c)
+            #                )
 
     S_w = newS_w
     S_w_all.append(newS_w)
@@ -73,7 +104,24 @@ print(len(S_w))
 plt.contourf(S_w)
 plt.show()
 plt.figure()
-plt.plot(np.linspace(0,L,N),S_w[:,1])
-plt.scatter(shockspeed*t_tot,0)
+plt.plot(np.linspace(0,L,N),S_w[:,0])
+plt.scatter(2*Amplitude+shockspeed*t_tot,0)
 plt.show()
 
+
+# fig = plt.figure()
+# X = np.arange(0, N)
+# Y = np.arange(0, N)
+# X, Y = np.meshgrid(X, Y)
+# ax = fig.gca(projection='3d')
+# surf = ax.plot_surface(Y, X, S_w, rstride=1, cmap="rainbow", cstride=1, antialiased=False)
+# fig.colorbar(surf)
+# plt.show()
+import plotly.graph_objects as go
+fig = go.Figure(data=[go.Surface(z=S_w)])
+
+# fig.update_layout(title='Saturation after ' + str(t_tot) + "s", autosize=True,
+#                   width=N, height=N,
+#                   margin=dict(l=65, r=50, b=65, t=90))
+
+fig.show()

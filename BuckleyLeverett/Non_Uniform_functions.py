@@ -22,24 +22,24 @@ def calc_pressure(Sw,c):
     l_tot = l_t(Sw,c)
     l_wL = l_w(Sw,c)
     l_oL = l_o(Sw,c)
-    dl_tot = dl_w(Sw,c) + dl_o(Sw,c)
+    dl_stot = dl_w(Sw,c) + dl_o(Sw,c)
     for i in range(K):
         # calculate position derivatives of l_tot,
         # since some BC are periodic they need to be calculated differently
         if i%N == N-1:
-            dl_totdx[i] = 1 / 2 / c.dx * (dl_tot[(i + 1-N)] - dl_tot[(i - 1)])
+            dl_totdx[i] = 1 / 2 / c.dx * (l_tot[(i + 1-N)] - l_tot[(i - 1)])
         elif i%N == 0:
-            dl_totdx[i] = 1 / 2 / c.dx * (dl_tot[(i + 1)] - dl_tot[(i - 1 + N)])
+            dl_totdx[i] = 1 / 2 / c.dx * (l_tot[(i + 1)] - l_tot[(i - 1 + N)])
         else:
-            dl_totdx[i] = 1 / 2 / c.dx * (dl_tot[(i + 1)] - dl_tot[(i - 1)])
+            dl_totdx[i] = 1 / 2 / c.dx * (l_tot[(i + 1)] - l_tot[(i - 1)])
 
         if math.floor(i/N) == M-1:
-            dl_totdy[i] = 1 / c.dx * (3*dl_tot[(i)] - 4 * dl_tot[(i - N)] + dl_tot[(i - 2 *N)])
+            dl_totdy[i] = 1 / c.dx * (3*l_tot[(i)] - 4 * l_tot[(i - N)] + l_tot[(i - 2 *N)])
         elif math.floor(i/N) == 0:
             # note that we have a less accurate calculation here
-            dl_totdy[i] = 1 /2 / c.dx * (-dl_tot[i+2*N]+ 4*dl_tot[i+N] - 3* dl_tot[(i)])
+            dl_totdy[i] = 1 /2 / c.dx * (-l_tot[i+2*N]+ 4*l_tot[i+N] - 3* l_tot[(i)])
         else:
-            dl_totdy[i] = 1 / 2 / c.dx * (dl_tot[i + N] - dl_tot[i-N])
+            dl_totdy[i] = 1 / 2 / c.dx * (l_tot[i + N] - l_tot[i-N])
 
         # set up diagonals
         diagonals = [-4 / c.dx / c.dx * l_tot,

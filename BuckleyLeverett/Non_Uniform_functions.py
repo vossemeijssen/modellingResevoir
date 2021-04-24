@@ -21,14 +21,11 @@ def calc_pressure(Sw,c):
     dl_totdx = np.zeros(N*M)
     dl_totdy = np.zeros(N*M)
 
-    # for all elements, calculate the following
     K = N*M
-    for i in range(K):
-        # calculate lambda_tot
-        l_tot[i]  = l_t(Sw[i],c)
-        l_wL[i]    = l_w(Sw[i],c)
-        l_oL[i]    = l_o(Sw[i],c)
-        dl_tot[i] = dl_w(Sw[i],c)+dl_o(Sw[i],c)
+    l_tot = l_t(Sw,c)
+    l_wL = l_w(Sw,c)
+    l_oL = l_o(Sw,c)
+    dl_tot = dl_w(Sw,c) + dl_o(Sw,c)
     for i in range(K):
         # calculate position derivatives of l_tot,
         # since some BC are periodic they need to be calculated differently
@@ -55,13 +52,7 @@ def calc_pressure(Sw,c):
                      l_tot[N:] / c.dx / c.dx - dl_totdy[N:] / 2 / c.dx]
         D = diags(diagonals, [0, 1, -1, N, -N]).toarray()
 
-        # create a list to remove the additional left and right elements (effectively we reduce N by 2)
-        list = []
-        for i in range(K):
-            if i % N == 0:
-                list.append(i)
-            elif i % N == N - 1:
-                list.append(i)
+
 
         # due to the periodic BC, we have to add the correct items in to the matrix (these are now in the
         # extra left and right elements and after we remove these, we have to add them back in.
@@ -83,7 +74,14 @@ def calc_pressure(Sw,c):
             D[index, index + 1] = (l_tot[index] / c.dx / c.dx)
             D[index, index - 1] = (l_tot[index] / c.dx / c.dx)
 
-
+    # create a list to remove the additional left and right elements (effectively we reduce N by 2)
+    list = []
+    for i in range(K):
+        if i % N == 0:
+            list.append(i)
+        elif i % N == N - 1:
+            list.append(i)
+            
     # remove the additional columns and rows who belong to the additional left and right elements.
     D = np.delete(D,list,axis=1)
     D = np.delete(D,list,axis=0)

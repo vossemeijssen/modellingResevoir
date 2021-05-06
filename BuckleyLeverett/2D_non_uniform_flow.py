@@ -7,15 +7,20 @@ from Non_Uniform_functions import *
 from scipy.sparse import  diags
 
 # initial variables
-dx = 1
-W  = 2
-L  = 10
-dt = 0.01
-t_tot = 0.01
+
 
 def magic_function(x, c):
     return df_dSw(x, c) - (f_w(x, c) - f_w(c.S_wc, c))/(x - c.S_wc)
 
+
+
+N  = 4 + 2  # number of nodes in y direction - two elements on the left and right as dummies
+M  = 20 + 1  # number of nodes in x direction - need to have the pressure for all indices, 0,dx,...,L-dx,L,
+L  = 10.
+W  = L / (M-1) * (N-2)
+dx = L / (M-1)
+dt = 0.005
+t_tot = 0.05
 
 
 c = Constants(
@@ -32,7 +37,7 @@ c = Constants(
     S_wc = 0.1,
     sigma = 1,
     labda = 1,
-    dx = 1)
+    dx = dx)
 
 S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
 shockspeed = c.u_inj/c.phi*df_dSw(S_w_shock, c)
@@ -47,13 +52,13 @@ c.dx = dx
 N = int(W/dx)+2
 # I add one on the length, as I need to have the pressure for all indices, 0,dx,...,L-dx,L,
 M = int(L/dx)+1
+
 print("N = ",N)
 print("M = ",M)
 
 # set initial Sw
-Sw = c.S_wc*np.ones((N-2)*M)
-Sw[0:(N-2)] = 1-c.S_or
-Sw = Sw.reshape(M,N-2)
+Sw = c.S_wc*np.ones((M,N-2))
+Sw[0,:] = 1-c.S_or
 
 # for t in tqdm.tqdm(range(int(t_tot/dt))):
 #     p = calc_pressure(Sw,c)
@@ -77,10 +82,14 @@ p = calc_pressure(Sw,c)
 # Swt = calc_Swt(Sw,p,c)
 
 import plotly.graph_objects as go
+import plotly.io as pio
+pio.renderers.default = "browser"
 fig = go.Figure(data=[go.Surface( z=p.reshape(M,N-2),x = np.linspace(0,W,N-2), y = np.linspace(0,L,M))])
 fig.show()
 # plot
+
 # import plotly.graph_objects as go
 # fig = go.Figure(data=[go.Surface( z=Sw,x = np.linspace(0,W,N-2), y = np.linspace(0,L,M))])
 # fig.show()
+
 

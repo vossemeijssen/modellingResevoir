@@ -5,8 +5,8 @@ from reservoirModule import *
 
 # Variables
 L = 10  # Total length
-W = 2   # Total Width
-dx = 0.05  # distance step
+W = 1   # Total Width
+dx = 0.1  # distance step
 t_tot = 0.3  # Total time
 # initial disturbance
 k = 1               # number of waves

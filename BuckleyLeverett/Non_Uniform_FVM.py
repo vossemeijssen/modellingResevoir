@@ -3,16 +3,20 @@ import matplotlib.pyplot as plt
 import tqdm
 import math
 from reservoirModule import *
-from scipy.sparse import  diags
+import scipy.sparse
 from timeit import timeit
 
+
+
 hx = 1
-hy = .2
-W  = 3
+hy = .5
+W  = 5
 L  = 6
 
-dt = 0.0005
+
 t_end = 0.2
+
+eps = 1e-1
 
 c = Constants(
     phi = 0.1,  # Porosity
@@ -32,7 +36,7 @@ c = Constants(
 
 N = int(W / hx)
 M = int(L / hy)
-Tstep = int(t_end/dt)
+
 
 def magic_function(x, c):
     return df_dSw(x, c) - (f_w(x, c) - f_w(c.S_wc, c))/(x - c.S_wc)
@@ -40,7 +44,11 @@ def magic_function(x, c):
 S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
 shockspeed = c.u_inj/c.phi*df_dSw(S_w_shock, c)
 
-print("shockspeed = ",shockspeed,", shock position = ",shockspeed*dt*Tstep,", maximum dt = ",min(hx,hy)/shockspeed)
+# why the constant 5?
+dt = min(hx,hy)/shockspeed/2/5
+Tstep = int(t_end/dt)
+
+print("shockspeed = ",shockspeed,", shock position = ",shockspeed*dt*Tstep,", maximum dt = ",min(hx,hy)/shockspeed/2)
 
 
 Sw = 0.1*np.ones(N*(M+1) + (N+1)*M)
@@ -50,6 +58,7 @@ for i in range(N):
 
 def FVM_pressure(Sw,c,N,M,hx,hy):
     p  = np.zeros(N*M)
+
 
     # set up S matrix for each volume, and each pressure
     S = np.zeros( [N*M, p.size])
@@ -321,8 +330,44 @@ def FVM_plot_Sw(Sw,N,M,L,W,c):
     import plotly.graph_objects as go
     fig=go.Figure(data=[go.Surface(z=Sw_plot,x=np.linspace(0,W,2*N+1),y=np.linspace(0,L,2*M+1))])
     fig.show()
+
     return
-# def FVM_plot_Sw(Sw,c,N,M,hx,hy,L,W):
+
+def FVM_diffusion_add(Sw,Swt,dt,N,M):
+    Swdiff = Sw
+
+    Sw1=Sw[0:(N*(M+1))].reshape(M+1,N)
+
+    Sw2=Sw[(N*(M+1)):].reshape(M,N+1)
+
+    for i in range(N):
+        for j in range(M+1):
+            indexSwDiff = i + j * N
+            indexSw     = N*(M+1) + i + (j-1)*(N+1)
+
+            if j == 0:
+                continue
+                Swdiff[indexSwDiff] = (Sw[indexSw + N + 1] + Sw[indexSw + N + 2]) / 2
+            elif j == M:
+                continue
+                Swdiff[indexSwDiff] = (Sw[indexSw        ] + Sw[indexSw     + 1]) / 2
+            else:
+                Swdiff[indexSwDiff] = (Sw[indexSw + N + 1] + Sw[indexSw + N + 2] + Sw[indexSw] + Sw[indexSw + 1]) / 4
+
+    for i in range(N+1):
+        for j in range(M):
+            indexSwDiff = N*(M+1) + i + j * (N+1)
+            indexSw     = i - 1 + j * N
+
+            if i == 0:
+                Swdiff[indexSwDiff] = (Sw[indexSw + 1] + Sw[indexSw + N + 1]) / 2
+            elif i == N:
+                Swdiff[indexSwDiff] = (Sw[indexSw    ] + Sw[indexSw + N    ]) / 2
+            else:
+                Swdiff[indexSwDiff] = (Sw[indexSw + 1] + Sw[indexSw + N + 1] + Sw[indexSw] + Sw[indexSw + N]) / 4
+
+    return Swdiff + dt * Swt
+
 
 
 
@@ -333,21 +378,45 @@ def FVM_plot_Sw(Sw,N,M,L,W,c):
 # fig.show()
 
 
+
+
 ## run newton backward.
-# for a speedup one can calculate the pressure once outside the while loop. This seems to give similar solutions. I am however not sure if it converges correctly...
+#for a speedup one can calculate the pressure once outside the while loop. This seems to give similar solutions. I am however not sure if it converges correctly...
 for i in tqdm.tqdm(range(Tstep)):
+    # if i == 94:
+    #     idx = 10
+    #     jdx = 9
+    #     indexSw = N * (M + 1) + idx + jdx * (N + 1)
+    #     Sw[indexSw] = 0.3
     Sw0 = Sw
     error = 1
     # p=FVM_pressure(Sw,c,N,M,hx,hy)
-    while error > 1e-9:
-        p=FVM_pressure(Sw,c,N,M,hx,hy)
-        Swt = FVM_Sw_t(p,Sw,c,N,M,hx,hy)
-        error=np.linalg.norm(Sw0+dt*Swt-Sw,np.inf)
-        Sw  = Sw0 + dt*Swt
-        # print("error = ",error)
+    while error > eps:
+        p       = FVM_pressure(Sw,c,N,M,hx,hy)
+        Swt     = FVM_Sw_t(p,Sw,c,N,M,hx,hy)
+        # Sw_new  = FVM_diffusion_add(Sw0,Swt,dt,N,M)
+        Sw_new  = Sw0 + dt * Swt
+        error   = np.linalg.norm(np.divide(Sw_new-Sw,Sw0),np.inf)
+        Sw      = Sw_new
+        # print(error)
+    # Sw = FVM_diffusion_add(Sw0,Swt,dt,N,M)
+
+# Newton Forward, seems to only converge for small dt... This induces to much diffusion
+# for i in tqdm.tqdm(range(Tstep)):
+#     p = FVM_pressure(Sw, c, N, M, hx, hy)
+#     Swt     = FVM_Sw_t(p,Sw,c,N,M,hx,hy)
+#     Sw  = FVM_diffusion_add(Sw,Swt,dt,N,M)
+
+# p       = FVM_pressure(Sw,c,N,M,hx,hy)
+# Swt     = FVM_Sw_t(p,Sw,c,N,M,hx,hy)
+# Sw      = FVM_diffusion_add(Sw,Swt,dt,N,M)
 
 ## plotting
 FVM_plot_Sw(Sw,N,M,L,W,c)
+
+# import plotly.graph_objects as go
+# fig = go.Figure(data=[go.Surface( z=p.reshape(M,N),x = np.linspace(0,W,N), y = np.linspace(0,L,M))])
+# fig.show()
 
 
 

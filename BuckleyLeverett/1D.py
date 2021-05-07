@@ -9,7 +9,7 @@ from reservoirModule import *
 
 # Parameters
 L = 1.  # Total length
-N = 2000 # Number of discrete intervals
+N = 40 # Number of discrete intervals
 t_tot = 0.02  # Total time
 c = Constants( # Moeten worden gefinetuned:
     phi = 0.1,  # Porosity

@@ -4,18 +4,25 @@ import matplotlib.pyplot as plt
 import tqdm
 import math
 from reservoirModule import *
-import scipy.sparse
+from scipy.sparse.linalg import isolve
+from scipy import sparse
 from timeit import timeit
+import scipy
+import random
 
 
 
 hx = 0.25
 hy = 0.25
-W  = 1
-L  = 4
+W  = 2
+L  = 3
 
-beun_factor  = 10
+kNum = 1
+delta = 0.001
 
+beun_factor  = 200
+
+plotting = False
 
 t_end = 0.1
 
@@ -56,6 +63,20 @@ N = int(W / hx)
 M = int(L / hy)
 
 @jit(nopython=True)
+def limiter(phi):
+    if np.isnan(phi):
+        return 0
+    else:
+        return 0+0*(phi+abs(phi))/(1+abs(phi))
+
+@jit(nopython=True)
+def NanDiff(a,b):
+    if b == 0:
+        return np.nan
+    else:
+        return a/b
+
+@jit(nopython=True)
 def l_w(S_w):
     S_wn = (S_w - S_wc) / (1.0 - S_or - S_wc)
     return kappa / (mu_w) * k_rw0 * (S_wn) ** n_w
@@ -86,6 +107,8 @@ print("shockspeed = ",shockspeed,", shock position = ",shockspeed*dt*Tstep,", ma
 Sw = 0.1*np.ones(N*(M+1) + (N+1)*M)
 for i in range(N):
     Sw[i] = 0.9
+
+
 
 @jit(nopython=True)
 def FVM_pressure_Mat(Sw,N,M,hx,hy):
@@ -224,6 +247,17 @@ def FVM_pressure_Mat(Sw,N,M,hx,hy):
 def FVM_pressure(Sw,N,M,hx,hy):
     S, f = FVM_pressure_Mat(Sw,N,M,hx,hy)
     p = np.linalg.lstsq(S,f,rcond=None)
+    # p = scipy.sparse.linalg.lsqr(S,)
+    return p[0]
+
+def FVM_pressure_CG(pOld,Sw,N,M,hx,hy):
+    S, f = FVM_pressure_Mat(Sw, N, M, hx, hy)
+    St   = np.transpose(S)
+    StS = np.dot(St,S)
+    Stf = np.dot(St,f)
+    # p = isolve.cg(StS,Stf,pOld,eps)
+    # p = isolve.bicgstab(StS,Stf,pOld,eps)
+    p = scipy.sparse.linalg.lsqr(S,f,x0 = pOld)
     return p[0]
 
 def FVM_Sw_t(p,Sw,N,M,hx,hy):
@@ -508,7 +542,8 @@ def FVM_Sw_t_2(p,Sw,N,M,hx,hy):
                 Swt[index_Swt] = Swt[index_Swt]*2
     return Swt
 
-def FVM_Sw_t_3(p,Sw,N,M,hx,hy):
+
+def FVM_Sw_t_4(p,Sw,N,M,hx,hy):
     Swt = np.zeros(N*(M+1) + (N+1)*M)
 
 
@@ -527,53 +562,207 @@ def FVM_Sw_t_3(p,Sw,N,M,hx,hy):
             ## vertical flows
             if i == 0:
                 if j == 0:
-                    boundary3c = hx / 2 * l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p + 1 + N] - p[index_p + 1]) / hy
-                    boundary3u = hx / 2 * l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p + 1 + N] - p[index_p + 1]) / hy
-                    boundary3d = hx / 2 * l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p + 1 + N] - p[index_p + 1]) / hy
-                    boundary4 = u_inj*hx/2
+                    boundary4l = u_inj*hx/2
+                    dpress3 = (p[index_p + N + 1] - p[index_p + 1]) / 2 / hy
+                    if  dpress3 < 0: # positive flow, so upwind
+                        boundary3l = hx / 2 * l_w(Sw[index_Swt]) * dpress3
+                    else:
+                        boundary3l = hx / 2 * l_w(Sw[index_Swt + N + 1]) * dpress3
+
+                    boundary3h = hx/2*l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p + 1 + N] - p[index_p + 1])/hy
+                    boundary4h = u_inj*hx/2
                 elif j == M-1:
-                    boundary3 = 0
-                    boundary4 = hx/2*l_w(Sw[index_Sw_yP + 1    ]) * (p[index_p + 1 - N] - p[index_p + 1])/hy
+                    boundary3l = 0
+                    dpress4 = (p[index_p + 1] - p[index_p - N + 1]) / 2 / hy
+                    if dpress4 < 0:
+                        boundary4l = -hx / 2 * l_w(Sw[index_Swt - N - 1]) * dpress4
+                    else:
+                        boundary4l = -hx / 2 * l_w(Sw[index_Swt]) * dpress4
+
+                    boundary3h = 0
+                    boundary4h = hx/2*l_w(Sw[index_Sw_yP + 1    ]) * (p[index_p + 1 - N] - p[index_p + 1])/hy
                 else:
-                    boundary3 = hx/2*l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p + 1 + N] - p[index_p + 1])/hy
-                    boundary4 = hx/2*l_w(Sw[index_Sw_yP + 1    ]) * (p[index_p + 1 - N] - p[index_p + 1])/hy
+                    dpress3 = (p[index_p + N + 1] - p[index_p + 1]) / 2 / hy
+                    dpress4 = (p[index_p + 1] - p[index_p - N + 1]) / 2 / hy
+                    if  dpress3 < 0:
+                        boundary3l = hx / 2 * l_w(Sw[index_Swt]) * dpress3
+                    else:
+                        boundary3l = hx / 2 * l_w(Sw[index_Swt + N + 1]) * dpress3
+                    if dpress4 < 0:
+                        boundary4l = -hx / 2 * l_w(Sw[index_Swt - N - 1]) * dpress4
+                    else:
+                        boundary4l = -hx / 2 * l_w(Sw[index_Swt]) * dpress4
+
+                    boundary3h = hx/2*l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p + 1 + N] - p[index_p + 1])/hy
+                    boundary4h = hx/2*l_w(Sw[index_Sw_yP + 1    ]) * (p[index_p + 1 - N] - p[index_p + 1])/hy
             elif i == N:
                 if j == 0:
-                    boundary3 = hx/2*l_w(Sw[index_Sw_yP + N]) * (p[index_p + N] - p[index_p])/hy
-                    boundary4 = u_inj*hx/2
+                    boundary4l = u_inj*hx/2
+                    dpress3 = (p[index_p + N] - p[index_p]) / 2 / hy
+                    if  dpress3 < 0:
+                        boundary3l = hx / 2 * l_w(Sw[index_Swt]) * dpress3
+                    else:
+                        boundary3l = hx / 2 * l_w(Sw[index_Swt + N + 1]) * dpress3
+                    boundary3h = hx/2*l_w(Sw[index_Sw_yP + N]) * (p[index_p + N] - p[index_p])/hy
+                    boundary4h = u_inj*hx/2
                 elif j == M-1:
-                    boundary3 = 0
-                    boundary4 = hx/2*l_w(Sw[index_Sw_yP    ]) * (p[index_p - N] - p[index_p])/hy
+                    boundary3l = 0
+                    dpress4 = (p[index_p] - p[index_p - N]) / 2 / hy
+                    if dpress4 < 0:
+                        boundary4l = -hx / 2 * l_w(Sw[index_Swt - N - 1]) * dpress4
+                    else:
+                        boundary4l = -hx / 2 * l_w(Sw[index_Swt]) * dpress4
+                    boundary3h = 0
+                    boundary4h = hx/2*l_w(Sw[index_Sw_yP    ]) * (p[index_p - N] - p[index_p])/hy
                 else:
-                    boundary3 = hx/2*l_w(Sw[index_Sw_yP + N]) * (p[index_p + N] - p[index_p])/hy
-                    boundary4 = hx/2*l_w(Sw[index_Sw_yP    ]) * (p[index_p - N] - p[index_p])/hy
+                    dpress3 = (p[index_p + N] - p[index_p]) / 2 / hy
+                    dpress4 = (p[index_p] - p[index_p - N]) / 2 / hy
+                    if  dpress3 < 0:
+                        boundary3l = hx / 2 * l_w(Sw[index_Swt]) * dpress3
+                    else:
+                        boundary3l = hx / 2 * l_w(Sw[index_Swt + N + 1]) * dpress3
+                    if dpress4 < 0:
+                        boundary4l = -hx / 2 * l_w(Sw[index_Swt - N - 1]) * dpress4
+                    else:
+                        boundary4l = -hx / 2 * l_w(Sw[index_Swt]) * dpress4
+
+                    boundary3h = hx/2*l_w(Sw[index_Sw_yP + N]) * (p[index_p + N] - p[index_p])/hy
+                    boundary4h = hx/2*l_w(Sw[index_Sw_yP    ]) * (p[index_p - N] - p[index_p])/hy
             else:
                 if j==0:
-                    boundary3 = hx/2 * ( l_w(Sw[index_Sw_yP + N])* (p[index_p+N]-p[index_p])/hy + l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p+N+1] - p[index_p + 1])/hy)
-                    boundary4 = u_inj*hx
+                    dpress3 = (p[index_p + N] + p[index_p + N + 1] - p[index_p] - p[index_p + 1]) / 4 / hy
+                    if  dpress3 < 0:
+                        boundary3l = hx * l_w(Sw[index_Swt]) * dpress3
+                    else:
+                        boundary3l = hx * l_w(Sw[index_Swt + N + 1]) * dpress3
+                    boundary4l = u_inj*hx
+
+                    boundary3h = hx/2 * ( l_w(Sw[index_Sw_yP + N])* (p[index_p+N]-p[index_p])/hy + l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p+N+1] - p[index_p + 1])/hy)
+                    boundary4h = u_inj*hx
                 elif j==M-1:
-                    boundary3 = 0
-                    boundary4 = hx/2 * ( l_w(Sw[index_Sw_yP + 0])* (p[index_p-N]-p[index_p])/hy + l_w(Sw[index_Sw_yP + 0 + 1]) * (p[index_p-N+1] - p[index_p + 1])/hy)
+                    boundary3l = 0
+                    dpress4 = (p[index_p] + p[index_p + 1] - p[index_p - N] - p[index_p - N + 1]) / 4 / hy
+                    if dpress4 < 0:
+                        boundary4l = -hx * l_w(Sw[index_Swt - N - 1]) * dpress4
+                    else:
+                        boundary4l = -hx * l_w(Sw[index_Swt]) * dpress4
+
+                    boundary3h = 0
+                    boundary4h = hx/2 * ( l_w(Sw[index_Sw_yP + 0])* (p[index_p-N]-p[index_p])/hy + l_w(Sw[index_Sw_yP + 0 + 1]) * (p[index_p-N+1] - p[index_p + 1])/hy)
                 else:
-                    boundary3 = hx/2 * ( l_w(Sw[index_Sw_yP + N])* (p[index_p+N]-p[index_p])/hy + l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p+N+1] - p[index_p + 1])/hy)
-                    boundary4 = hx/2 * ( l_w(Sw[index_Sw_yP + 0])* (p[index_p-N]-p[index_p])/hy + l_w(Sw[index_Sw_yP + 0 + 1]) * (p[index_p-N+1] - p[index_p + 1])/hy)
+                    dpress3 = (p[index_p + N] + p[index_p + N + 1] - p[index_p] - p[index_p + 1]) / 4 / hy
+                    dpress4 = (p[index_p] + p[index_p + 1] - p[index_p - N] - p[index_p - N + 1]) / 4 / hy
+                    if  dpress3 < 0:
+                        boundary3l = hx * l_w(Sw[index_Swt]) * dpress3
+                    else:
+                        boundary3l = hx * l_w(Sw[index_Swt + N + 1]) * dpress3
+                    if dpress4 < 0:
+                        boundary4l = -hx * l_w(Sw[index_Swt - N - 1]) * dpress4
+                    else:
+                        boundary4l = -hx * l_w(Sw[index_Swt]) * dpress4
+
+                    boundary3h = hx/2 * ( l_w(Sw[index_Sw_yP + N])* (p[index_p+N]-p[index_p])/hy + l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p+N+1] - p[index_p + 1])/hy)
+                    boundary4h = hx/2 * ( l_w(Sw[index_Sw_yP + 0])* (p[index_p-N]-p[index_p])/hy + l_w(Sw[index_Sw_yP + 0 + 1]) * (p[index_p-N+1] - p[index_p + 1])/hy)
 
             ## horizonatal flows
             if i == 0:
-                boundary1 = 0
-                boundary2 = hy * (l_w(Sw[index_Sw_yP + 1]) + l_w(Sw[index_Sw_yP + N + 1])) / 2 * (p[index_p + 2] - p[index_p + 1]) / 2 / hx
+                boundary1l = 0
+                dpress2    = (p[index_p + 2] - p[index_p + 1]) / 2 / hx
+                if dpress2 < 0:
+                    boundary2l = hy * l_w(Sw[index_Swt]) * dpress2
+                else:
+                    boundary2l = hy * l_w(Sw[index_Swt +  1]) * dpress2
+
+                boundary1h = 0
+                boundary2h = hy * (l_w(Sw[index_Sw_yP + 1]) + l_w(Sw[index_Sw_yP + N + 1])) / 2 * (p[index_p + 2] - p[index_p + 1]) / 2 / hx
             elif i == 1:
-                boundary1 = hy * (l_w(Sw[index_Sw_yP    ]) + l_w(Sw[index_Sw_yP + N    ])) / 2 * (p[index_p    ] - p[index_p + 1]) / 2 / hx
-                boundary2 = hy * (l_w(Sw[index_Sw_yP + 1]) + l_w(Sw[index_Sw_yP + N + 1])) / 2 * (p[index_p + 2] - p[index_p    ]) / 2 / hx
+                dpress1 = (p[index_p    ] - p[index_p + 1]) / 2 / hx
+                dpress2 = (p[index_p + 2] - p[index_p + 1]) / 2 / hx
+                if dpress1 > 0:
+                    boundary1l = hy * l_w(Sw[index_Swt - 1]) * dpress1
+                else:
+                    boundary1l = hy * l_w(Sw[index_Swt    ]) * dpress1
+                if dpress2 < 0:
+                    boundary2l = hy * l_w(Sw[index_Swt    ]) * dpress2
+                else:
+                    boundary2l = hy * l_w(Sw[index_Swt +  1]) * dpress2
+
+                boundary1h = hy * (l_w(Sw[index_Sw_yP    ]) + l_w(Sw[index_Sw_yP + N    ])) / 2 * (p[index_p    ] - p[index_p + 1]) / 2 / hx
+                boundary2h = hy * (l_w(Sw[index_Sw_yP + 1]) + l_w(Sw[index_Sw_yP + N + 1])) / 2 * (p[index_p + 2] - p[index_p    ]) / 2 / hx
             elif i == N-1:
-                boundary1 = hy * (l_w(Sw[index_Sw_yP    ]) + l_w(Sw[index_Sw_yP + N    ])) / 2 * (p[index_p - 1] - p[index_p + 1]) / 2 / hx
-                boundary2 = hy * (l_w(Sw[index_Sw_yP + 1]) + l_w(Sw[index_Sw_yP + N + 1])) / 2 * (p[index_p + 1] - p[index_p    ]) / 2 / hx
+                dpress1    = (p[index_p - 1] - p[index_p + 1]) / 2 / hx
+                dpress2    = (p[index_p + 1] - p[index_p    ]) / 2 / hx
+                if dpress1 > 0:
+                    boundary1l = hy * l_w(Sw[index_Swt - 1]) * dpress1
+                else:
+                    boundary1l = hy * l_w(Sw[index_Swt    ]) * dpress1
+                if dpress2 < 0:
+                    boundary2l = hy * l_w(Sw[index_Swt    ]) * dpress2
+                else:
+                    boundary2l = hy * l_w(Sw[index_Swt +  1]) * dpress2
+
+                boundary1h = hy * (l_w(Sw[index_Sw_yP    ]) + l_w(Sw[index_Sw_yP + N    ])) / 2 * (p[index_p - 1] - p[index_p + 1]) / 2 / hx
+                boundary2h = hy * (l_w(Sw[index_Sw_yP + 1]) + l_w(Sw[index_Sw_yP + N + 1])) / 2 * (p[index_p + 1] - p[index_p    ]) / 2 / hx
             elif i == N:
-                boundary1 = hy * (l_w(Sw[index_Sw_yP    ]) + l_w(Sw[index_Sw_yP + N    ])) / 2 * (p[index_p - 1] - p[index_p    ]) / 2 / hx
-                boundary2 = 0
+                boundary2l = 0
+                dpress1    = (p[index_p - 1] - p[index_p    ]) / 2 / hx
+                if dpress1 > 0:
+                    boundary1l = hy * l_w(Sw[index_Swt - 1]) * dpress1
+                else:
+                    boundary1l = hy * l_w(Sw[index_Swt]) * dpress1
+
+                boundary1h = hy * (l_w(Sw[index_Sw_yP    ]) + l_w(Sw[index_Sw_yP + N    ])) / 2 * (p[index_p - 1] - p[index_p    ]) / 2 / hx
+                boundary2h = 0
             else:
-                boundary1 = hy * (l_w(Sw[index_Sw_yP    ]) + l_w(Sw[index_Sw_yP + N    ])) / 2 * (p[index_p - 1] - p[index_p + 1]) / 2 / hx
-                boundary2 = hy * (l_w(Sw[index_Sw_yP + 1]) + l_w(Sw[index_Sw_yP + N + 1])) / 2 * (p[index_p + 2] - p[index_p    ]) / 2 / hx
+                dpress1    = (p[index_p - 1] - p[index_p + 1]) / 2 / hx
+                dpress2    = (p[index_p + 2] - p[index_p    ]) / 2 / hx
+                if dpress1 > 0:
+                    boundary1l = hy * l_w(Sw[index_Swt - 1]) * dpress1
+                else:
+                    boundary1l = hy * l_w(Sw[index_Swt    ]) * dpress1
+                if dpress2 < 0:
+                    boundary2l = hy * l_w(Sw[index_Swt    ]) * dpress2
+                else:
+                    boundary2l = hy * l_w(Sw[index_Swt +  1]) * dpress2
+
+                boundary1h = hy * (l_w(Sw[index_Sw_yP    ]) + l_w(Sw[index_Sw_yP + N    ])) / 2 * (p[index_p - 1] - p[index_p + 1]) / 2 / hx
+                boundary2h = hy * (l_w(Sw[index_Sw_yP + 1]) + l_w(Sw[index_Sw_yP + N + 1])) / 2 * (p[index_p + 2] - p[index_p    ]) / 2 / hx
+
+
+            NumElementsSw = np.size(Sw)
+
+            u1 = (Sw[index_Sw_yP]+Sw[index_Sw_yP + N])/2
+            r1 = NanDiff(u1 - Sw[index_Swt-1], Sw[index_Swt] - u1)
+            boundary1 = boundary1l + limiter(r1)*(boundary1h - boundary1l)
+
+            u2 = (Sw[index_Sw_yP + 1] + Sw[index_Sw_yP + N + 1]) / 2
+            r2 = NanDiff(u2 - Sw[index_Swt], Sw[(index_Swt + 1)%NumElementsSw] - u2)
+            boundary2 = boundary2l + limiter(r2) * (boundary2h - boundary2l)
+
+            if i == 0:
+                u3 = (Sw[index_Sw_yP + N + 1]) / 1
+            elif i == N - 1:
+                u3 = (Sw[index_Sw_yP + N]) / 1
+            else:
+                u3 = (Sw[index_Sw_yP + N] + Sw[index_Sw_yP + N + 1]) / 2
+            r3 = NanDiff(u3 - Sw[index_Swt], Sw[(index_Swt + N + 1)%NumElementsSw] - u3)
+            boundary3 = boundary3l + limiter(r3)*(boundary3h - boundary3l)
+
+            if i == 0:
+                u4 = (Sw[index_Sw_yP + 1]) / 1
+            elif i == N - 1:
+                u4 = (Sw[index_Sw_yP]) / 1
+            else:
+                u4 = (Sw[index_Sw_yP] + Sw[index_Sw_yP + 1]) / 2
+            if index_Swt - N - 1 < N * (M+1):
+                r4 = 0
+            else:
+                r4 = NanDiff(u4 - Sw[index_Swt - N - 1], Sw[index_Swt] - u4)
+            boundary4 = boundary4l + limiter(r4)*(boundary4h - boundary4l)
+
+            boundary1 = boundary1h
+            boundary2 = boundary2h
+
 
             Swt[index_Swt] = (boundary1 + boundary2 + boundary3 + boundary4)/phi/hx/hy
             if i == 0 or i == N:
@@ -582,7 +771,7 @@ def FVM_Sw_t_3(p,Sw,N,M,hx,hy):
 
 
     for j in range(M+1):
-        if j == 0:
+        if j == 0 or j == M:
             continue
         for i in range(N):
             index_Swt=  i + N * j
@@ -618,35 +807,378 @@ def FVM_Sw_t_3(p,Sw,N,M,hx,hy):
                     boundary2 = hy/2*l_w(Sw[index_Sw_xP+0])*(p[index_p-1]-p[index_p])/hx
             else:
                 if i == 0:
-                    boundary1 = hy/2 * (l_w(Sw[index_Sw_xP + 1])*(p[index_p + 1])-p[index_p]/hx + l_w(Sw[index_Sw_xP + N + 2])*(p[index_p + N + 1]- p[index_p + N])/hx)
+                    boundary1 = hy/2 * (l_w(Sw[index_Sw_xP + 1])*(p[index_p + 1]-p[index_p])/hx + l_w(Sw[index_Sw_xP + N + 2])*(p[index_p + N + 1]- p[index_p + N])/hx)
                     boundary2 = 0
                 elif i == N-1:
                     boundary1 = 0
-                    boundary2 = hy/2 * (l_w(Sw[index_Sw_xP    ])*(p[index_p - 1])-p[index_p]/hx + l_w(Sw[index_Sw_xP + N + 1])*(p[index_p + N - 1]- p[index_p + N])/hx)
+                    boundary2 = hy/2 * (l_w(Sw[index_Sw_xP    ])*(p[index_p - 1]-p[index_p])/hx + l_w(Sw[index_Sw_xP + N + 1])*(p[index_p + N - 1]- p[index_p + N])/hx)
                 else:
-                    boundary1 = hy/2 * (l_w(Sw[index_Sw_xP + 1])*(p[index_p + 1])-p[index_p]/hx + l_w(Sw[index_Sw_xP + N + 2])*(p[index_p + N + 1]- p[index_p + N])/hx)
-                    boundary2 = hy/2 * (l_w(Sw[index_Sw_xP    ])*(p[index_p - 1])-p[index_p]/hx + l_w(Sw[index_Sw_xP + N + 1])*(p[index_p + N - 1]- p[index_p + N])/hx)
+                    boundary1 = hy/2 * (l_w(Sw[index_Sw_xP + 1])*(p[index_p + 1]-p[index_p])/hx + l_w(Sw[index_Sw_xP + N + 2])*(p[index_p + N + 1]- p[index_p + N])/hx)
+                    boundary2 = hy/2 * (l_w(Sw[index_Sw_xP    ])*(p[index_p - 1]-p[index_p])/hx + l_w(Sw[index_Sw_xP + N + 1])*(p[index_p + N - 1]- p[index_p + N])/hx)
 
             ## vertical flow
             if j == 0:
-                boundary3 = hx*(l_w(Sw[index_Sw_xP + N + 1])+l_w(Sw[index_Sw_xP + N + 2]))/2*(p[index_p + 2 * N]-p[index_p + N] - hy*u_inj/l_w(Sw[index_Swt]))/2/hy
-                boundary4 = u_inj*hx
+                boundary4l = u_inj*hx
+                dpress3    = (p[index_p + 2 * N]-p[index_p + N] - hy*u_inj/l_w(Sw[index_Swt]))/2/hy
+                if dpress3 < 0:
+                    boundary3l = hx * l_w(Sw[index_Swt]) * dpress3
+                else:
+                    boundary3l = hx * l_w(Sw[index_Swt + N]) * dpress3
+                boundary3h = hx*(l_w(Sw[index_Sw_xP + N + 1])+l_w(Sw[index_Sw_xP + N + 2]))/2*(p[index_p + 2 * N]-p[index_p + N] - hy*u_inj/l_w(Sw[index_Swt]))/2/hy
+                boundary4h = u_inj*hx
             elif j == 1:
-                boundary3 = hx*(l_w(Sw[index_Sw_xP + N + 1])+l_w(Sw[index_Sw_xP + N + 2]))/2*(p[index_p + 2 * N]-p[index_p    ])/2/hy
-                boundary4 = hx*(l_w(Sw[index_Sw_xP        ])+l_w(Sw[index_Sw_xP     + 1]))/2*(p[index_p        ]+ hy*u_inj/l_w(Sw[index_Swt-N])-p[index_p + N])/2/hy
+                dpress3    = (p[index_p + 2 * N]-p[index_p    ])/2/hy
+                dpress4    = (p[index_p        ]+ hy*u_inj/l_w(Sw[index_Swt-N])-p[index_p + N])/2/hy
+                if dpress3 < 0:
+                    boundary3l = hx * l_w(Sw[index_Swt]) * dpress3
+                else:
+                    boundary3l = hx * l_w(Sw[index_Swt + N]) * dpress3
+                if dpress4 > 0:
+                    boundary4l = hx * l_w(Sw[index_Swt - N]) * dpress4
+                else:
+                    boundary4l = hx * l_w(Sw[index_Swt]) * dpress4
+                boundary3h = hx*(l_w(Sw[index_Sw_xP + N + 1])+l_w(Sw[index_Sw_xP + N + 2]))/2*(p[index_p + 2 * N]-p[index_p    ])/2/hy
+                boundary4h = hx*(l_w(Sw[index_Sw_xP        ])+l_w(Sw[index_Sw_xP     + 1]))/2*(p[index_p        ]+ hy*u_inj/l_w(Sw[index_Swt-N])-p[index_p + N])/2/hy
             elif j == M:
-                boundary3 = 0
-                boundary4 = hx*(l_w(Sw[index_Sw_xP        ])+l_w(Sw[index_Sw_xP     + 1]))/2*(p[index_p - N    ]-p[index_p    ])/2/hy
+                boundary3l = 0
+                dpress4    = (p[index_p - N    ]-p[index_p    ])/2/hy
+                if dpress4 > 0:
+                    boundary4l = hx * l_w(Sw[index_Swt - N]) * dpress4
+                else:
+                    boundary4l = hx * l_w(Sw[index_Swt]) * dpress4
+                boundary3h = 0
+                boundary4h = hx*(l_w(Sw[index_Sw_xP        ])+l_w(Sw[index_Sw_xP     + 1]))/2*(p[index_p - N    ]-p[index_p    ])/2/hy
             elif j == M-1:
-                boundary3 = hx*(l_w(Sw[index_Sw_xP + N + 1])+l_w(Sw[index_Sw_xP + N + 2]))/2*(p[index_p + 1 * N]-p[index_p    ])/2/hy
-                boundary4 = hx*(l_w(Sw[index_Sw_xP        ])+l_w(Sw[index_Sw_xP     + 1]))/2*(p[index_p - N    ]-p[index_p + N])/2/hy
+                dpress3    = (p[index_p + 1 * N]-p[index_p    ])/2/hy
+                dpress4    = (p[index_p - N    ]-p[index_p + N])/2/hy
+                if dpress3 < 0:
+                    boundary3l = hx * l_w(Sw[index_Swt]) * dpress3
+                else:
+                    boundary3l = hx * l_w(Sw[index_Swt + N]) * dpress3
+                if dpress4 > 0:
+                    boundary4l = hx * l_w(Sw[index_Swt - N]) * dpress4
+                else:
+                    boundary4l = hx * l_w(Sw[index_Swt]) * dpress4
+                boundary3h = hx*(l_w(Sw[index_Sw_xP + N + 1])+l_w(Sw[index_Sw_xP + N + 2]))/2*(p[index_p + 1 * N]-p[index_p    ])/2/hy
+                boundary4h = hx*(l_w(Sw[index_Sw_xP        ])+l_w(Sw[index_Sw_xP     + 1]))/2*(p[index_p - N    ]-p[index_p + N])/2/hy
             else:
-                boundary3 = hx*(l_w(Sw[index_Sw_xP + N + 1])+l_w(Sw[index_Sw_xP + N + 2]))/2*(p[index_p + 2 * N]-p[index_p    ])/2/hy
-                boundary4 = hx*(l_w(Sw[index_Sw_xP        ])+l_w(Sw[index_Sw_xP     + 1]))/2*(p[index_p - N    ]-p[index_p + N])/2/hy
+                dpress3    = (p[index_p + 2 * N]-p[index_p    ])/2/hy
+                dpress4    = (p[index_p - N    ]-p[index_p + N])/2/hy
+                if dpress3 < 0:
+                    boundary3l = hx * l_w(Sw[index_Swt]) * dpress3
+                else:
+                    boundary3l = hx * l_w(Sw[index_Swt + N]) * dpress3
+                if dpress4 > 0:
+                    boundary4l = hx * l_w(Sw[index_Swt - N]) * dpress4
+                else:
+                    boundary4l = hx * l_w(Sw[index_Swt]) * dpress4
+                boundary3h = hx*(l_w(Sw[index_Sw_xP + N + 1])+l_w(Sw[index_Sw_xP + N + 2]))/2*(p[index_p + 2 * N]-p[index_p    ])/2/hy
+                boundary4h = hx*(l_w(Sw[index_Sw_xP        ])+l_w(Sw[index_Sw_xP     + 1]))/2*(p[index_p - N    ]-p[index_p + N])/2/hy
+
+            NumElementsSw = np.size(Sw)
+
+            # u1 = (Sw[index_Sw_yP] + Sw[index_Sw_yP + N]) / 2
+            # r1 = NanDiff(u1 - Sw[index_Swt - 1], Sw[index_Swt] - u1)
+            # boundary1 = boundary1l + limiter(r1) * (boundary1h - boundary1l)
+            #
+            # u2 = (Sw[index_Sw_yP + 1] + Sw[index_Sw_yP + N + 1]) / 2
+            # r2 = NanDiff(u2 - Sw[index_Swt], Sw[(index_Swt + 1) % NumElementsSw] - u2)
+            # boundary2 = boundary2l + limiter(r2) * (boundary2h - boundary2l)
+
+            u3 = (Sw[(index_Sw_xP + N + 1) % NumElementsSw] + Sw[(index_Sw_xP + N + 2) % NumElementsSw]) / 2
+            r3 = NanDiff(u3 - Sw[index_Swt], Sw[(index_Swt + N) % NumElementsSw] - u3)
+            boundary3 = boundary3l + limiter(r3) * (boundary3h - boundary3l)
+
+            u4 = (Sw[index_Sw_xP] + Sw[(index_Sw_xP + 1) % NumElementsSw]) / 2
+            r4 = NanDiff(u4 - Sw[index_Swt - N], Sw[index_Swt] - u4)
+            boundary4 = boundary4l + limiter(r4) * (boundary4h - boundary4l)
 
             Swt[index_Swt] = (boundary1 + boundary2 + boundary3 + boundary4)/phi/hx/hy
             if j == 0 or j == M:
                 Swt[index_Swt] = Swt[index_Swt]*2
+    return Swt
+
+# @jit(nopython=True)
+def FVM_Sw_t_3(p,Sw,N,M,hx,hy):
+    Swt = np.zeros(N*(M+1) + (N+1)*M)
+
+    #################################################################### N + 1 x M
+
+    ## vertical flows
+
+    # vertices
+    i = 0; j = 0
+    index_Swt=N*(M+1)+i+(N+1)*j
+    index_p=i-1+j*N
+    index_Sw_yP=i-1+j*N
+
+    boundary3 = hx/2*l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p + 1 + N] - p[index_p + 1])/hy
+    boundary4 = u_inj*hx/2
+    Swt[index_Swt]+=(boundary3+boundary4)/phi/hx/hy * 2
+
+    i = 0; j = M - 1
+    index_Swt=N*(M+1)+i+(N+1)*j
+    index_p=i-1+j*N
+    index_Sw_yP=i-1+j*N
+
+    boundary3 = 0
+    boundary4 = hx/2*l_w(Sw[index_Sw_yP + 1    ]) * (p[index_p + 1 - N] - p[index_p + 1])/hy
+    Swt[index_Swt]+=(boundary3+boundary4)/phi/hx/hy * 2
+
+
+    i = N; j = 0
+    index_Swt=N*(M+1)+i+(N+1)*j
+    index_p=i-1+j*N
+    index_Sw_yP=i-1+j*N
+
+    boundary3 = hx/2*l_w(Sw[index_Sw_yP + N]) * (p[index_p + N] - p[index_p])/hy
+    boundary4 = u_inj*hx/2
+    Swt[index_Swt]+=(boundary3+boundary4)/phi/hx/hy * 2
+
+    i = N; j = M - 1
+    index_Swt=N*(M+1)+i+(N+1)*j
+    index_p=i-1+j*N
+    index_Sw_yP=i-1+j*N
+
+    boundary3 = 0
+    boundary4 = hx/2*l_w(Sw[index_Sw_yP    ]) * (p[index_p - N] - p[index_p])/hy
+    Swt[index_Swt] += (boundary3+boundary4)/phi/hx/hy * 2
+
+
+    # i = 0 , i = N+1
+    for j in range(1,M-1):
+        i = 0
+        index_Swt=N*(M+1)+i+(N+1)*j
+        index_p=i-1+j*N
+        index_Sw_yP=i-1+j*N
+
+        boundary3=hx/2*l_w(Sw[index_Sw_yP+N+1])*(p[index_p+1+N]-p[index_p+1])/hy
+        boundary4=hx/2*l_w(Sw[index_Sw_yP+1])*(p[index_p+1-N]-p[index_p+1])/hy
+        Swt[index_Swt] += (boundary3 + boundary4) / phi / hx / hy * 2
+
+        i = N
+        index_Swt=N*(M+1)+i+(N+1)*j
+        index_p=i-1+j*N
+        index_Sw_yP=i-1+j*N
+
+        boundary3=hx/2*l_w(Sw[index_Sw_yP+N])*(p[index_p+N]-p[index_p])/hy
+        boundary4=hx/2*l_w(Sw[index_Sw_yP])*(p[index_p-N]-p[index_p])/hy
+        Swt[index_Swt] += (boundary3 + boundary4) / phi / hx / hy * 2
+
+    # j = 0, j = M
+    for i in range(1,N):
+        j = 0
+        index_Swt = N * (M + 1) + i + (N + 1) * j
+        index_p = i - 1 + j * N
+        index_Sw_yP = i - 1 + j * N
+
+        boundary3 = hx/2 * ( l_w(Sw[index_Sw_yP + N])* (p[index_p+N]-p[index_p])/hy + l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p+N+1] - p[index_p + 1])/hy)
+        boundary4 = u_inj*hx
+        Swt[index_Swt]+=(boundary3+boundary4)/phi/hx/hy
+
+
+        j = M-1
+        index_Swt = N * (M + 1) + i + (N + 1) * j
+        index_p = i - 1 + j * N
+        index_Sw_yP = i - 1 + j * N
+
+        boundary3 = 0
+        boundary4 = hx/2 * ( l_w(Sw[index_Sw_yP + 0])* (p[index_p-N]-p[index_p])/hy + l_w(Sw[index_Sw_yP + 0 + 1]) * (p[index_p-N+1] - p[index_p + 1])/hy)
+        Swt[index_Swt] += (boundary3 + boundary4) / phi / hx / hy
+
+    for i in range(1,N):
+        for j in range(1,M-1):
+            index_Swt   = N * (M + 1) + i + (N + 1) * j
+            index_p     = i - 1 + j * N
+            index_Sw_yP = i - 1 + j * N
+
+            boundary3 = hx/2 * ( l_w(Sw[index_Sw_yP + N])* (p[index_p+N]-p[index_p])/hy + l_w(Sw[index_Sw_yP + N + 1]) * (p[index_p+N+1] - p[index_p + 1])/hy)
+            boundary4 = hx/2 * ( l_w(Sw[index_Sw_yP + 0])* (p[index_p-N]-p[index_p])/hy + l_w(Sw[index_Sw_yP + 0 + 1]) * (p[index_p-N+1] - p[index_p + 1])/hy)
+            Swt[index_Swt] += (boundary3 + boundary4)/phi/hx/hy
+
+
+    # horizontal flows
+    for j in range(1,M):
+        i = 0
+        index_Swt = N * (M + 1) + i + (N + 1) * j
+        index_p = i - 1 + j * N
+        index_Sw_yP = i - 1 + j * N
+
+        boundary1 = 0
+        boundary2 = hy * (l_w(Sw[index_Sw_yP + 1]) + l_w(Sw[index_Sw_yP + N + 1])) / 2 * (p[index_p + 2] - p[index_p + 1]) / 2 / hx
+        Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy * 2
+
+        i = 1
+        index_Swt = N * (M + 1) + i + (N + 1) * j
+        index_p = i - 1 + j * N
+        index_Sw_yP = i - 1 + j * N
+
+        boundary1 = hy * (l_w(Sw[index_Sw_yP    ]) + l_w(Sw[index_Sw_yP + N    ])) / 2 * (p[index_p    ] - p[index_p + 1]) / 2 / hx
+        boundary2 = hy * (l_w(Sw[index_Sw_yP + 1]) + l_w(Sw[index_Sw_yP + N + 1])) / 2 * (p[index_p + 2] - p[index_p    ]) / 2 / hx
+        Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy
+
+        i = N - 1
+        index_Swt = N * (M + 1) + i + (N + 1) * j
+        index_p = i - 1 + j * N
+        index_Sw_yP = i - 1 + j * N
+
+        boundary1 = hy * (l_w(Sw[index_Sw_yP    ]) + l_w(Sw[index_Sw_yP + N    ])) / 2 * (p[index_p - 1] - p[index_p + 1]) / 2 / hx
+        boundary2 = hy * (l_w(Sw[index_Sw_yP + 1]) + l_w(Sw[index_Sw_yP + N + 1])) / 2 * (p[index_p + 1] - p[index_p    ]) / 2 / hx
+        Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy
+
+        i = N
+        index_Swt = N * (M + 1) + i + (N + 1) * j
+        index_p = i - 1 + j * N
+        index_Sw_yP = i - 1 + j * N
+
+        boundary1 = hy * (l_w(Sw[index_Sw_yP    ]) + l_w(Sw[index_Sw_yP + N    ])) / 2 * (p[index_p - 1] - p[index_p    ]) / 2 / hx
+        boundary2 = 0
+        Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy * 2
+
+    for j in range(M):
+        for i in range(2,N-1):
+            index_Swt   = N * (M + 1) + i + (N + 1) * j
+            index_p     = i - 1 + j * N
+            index_Sw_yP = i - 1 + j * N
+
+            boundary1 = hy * (l_w(Sw[index_Sw_yP    ]) + l_w(Sw[index_Sw_yP + N    ])) / 2 * (p[index_p - 1] - p[index_p + 1]) / 2 / hx
+            boundary2 = hy * (l_w(Sw[index_Sw_yP + 1]) + l_w(Sw[index_Sw_yP + N + 1])) / 2 * (p[index_p + 2] - p[index_p    ]) / 2 / hx
+            Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy
+
+
+    ############################################################################################### N x M + 1
+    # horizontal flow:
+    # i = 0; j = 0
+    # index_Swt = i + N * j
+    # index_p = i + (j - 1) * N
+    # index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+    #
+    # boundary1 = hy / 2 * l_w(Sw[index_Sw_xP + 1 + N + 1]) * (p[index_p + N + 1] - p[index_p + N]) / hx
+    # boundary2 = 0
+    # Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy * 2
+
+    i = 0; j = M
+    index_Swt = i + N * j
+    index_p = i + (j - 1) * N
+    index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+
+    boundary1 = hy/2*l_w(Sw[index_Sw_xP+1])*(p[index_p+1]-p[index_p])/hx
+    boundary2 = 0
+    Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy * 2
+
+    # i = N-1; j = 0
+    # index_Swt = i + N * j
+    # index_p = i + (j - 1) * N
+    # index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+    #
+    # boundary1 = 0
+    # boundary2 = hy/2*l_w(Sw[index_Sw_xP + 0 + N + 1]) * (p[index_p + N - 1] - p[index_p + N])/hx
+    # Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy * 2
+
+    i = N-1; j = M
+    index_Swt = i + N * j
+    index_p = i + (j - 1) * N
+    index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+
+    boundary1 = 0
+    boundary2 = hy / 2 * l_w(Sw[index_Sw_xP + 0]) * (p[index_p - 1] - p[index_p]) / hx
+    Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy * 2
+
+    for j in range(1,M):
+        i = 0
+        index_Swt = i + N * j
+        index_p = i + (j - 1) * N
+        index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+
+        boundary1 = hy/2 * (l_w(Sw[index_Sw_xP + 1])*(p[index_p + 1]-p[index_p])/hx + l_w(Sw[index_Sw_xP + N + 2])*(p[index_p + N + 1]- p[index_p + N])/hx)
+        boundary2 = 0
+        Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy
+
+        i = N - 1
+        index_Swt = i + N * j
+        index_p = i + (j - 1) * N
+        index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+
+        boundary1 = 0
+        boundary2 = hy/2 * (l_w(Sw[index_Sw_xP    ])*(p[index_p - 1]-p[index_p])/hx + l_w(Sw[index_Sw_xP + N + 1])*(p[index_p + N - 1]- p[index_p + N])/hx)
+        Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy
+
+    for i in range(1,N-1):
+        # j = 0
+        # index_Swt = i + N * j
+        # index_p = i + (j - 1) * N
+        # index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+        #
+        # boundary1 = hy/2*l_w(Sw[index_Sw_xP + 1 + N + 1]) * (p[index_p + N + 1] - p[index_p + N])/hx
+        # boundary2 = hy/2*l_w(Sw[index_Sw_xP + 0 + N + 1]) * (p[index_p + N - 1] - p[index_p + N])/hx
+        # Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy * 2
+
+        j = M
+        index_Swt = i + N * j
+        index_p = i + (j - 1) * N
+        index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+
+        boundary1 = hy / 2 * l_w(Sw[index_Sw_xP + 1]) * (p[index_p + 1] - p[index_p]) / hx
+        boundary2 = hy / 2 * l_w(Sw[index_Sw_xP + 0]) * (p[index_p - 1] - p[index_p]) / hx
+        Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy * 2
+
+    for i in range(1,N-1):
+        for j in range(1,M):
+            index_Swt = i + N * j
+            index_p = i + (j - 1) * N
+            index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+
+            boundary1 = hy/2 * (l_w(Sw[index_Sw_xP + 1])*(p[index_p + 1]-p[index_p])/hx + l_w(Sw[index_Sw_xP + N + 2])*(p[index_p + N + 1]- p[index_p + N])/hx)
+            boundary2 = hy/2 * (l_w(Sw[index_Sw_xP    ])*(p[index_p - 1]-p[index_p])/hx + l_w(Sw[index_Sw_xP + N + 1])*(p[index_p + N - 1]- p[index_p + N])/hx)
+            Swt[index_Swt] += (boundary1 + boundary2) / phi / hx / hy
+
+    for i in range(N):
+        # j = 0
+        # index_Swt = i + N * j
+        # index_p = i + (j - 1) * N
+        # index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+        #
+        # boundary3 = hx*(l_w(Sw[index_Sw_xP + N + 1])+l_w(Sw[index_Sw_xP + N + 2]))/2*(p[index_p + 2 * N]-p[index_p + N] - hy*u_inj/l_w(Sw[index_Swt]))/2/hy
+        # boundary4 = u_inj*hx
+        # Swt[index_Swt] += (boundary3 + boundary4) / phi / hx / hy * 2
+
+        j = 1
+        index_Swt = i + N * j
+        index_p = i + (j - 1) * N
+        index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+
+        boundary3 = hx*(l_w(Sw[index_Sw_xP + N + 1])+l_w(Sw[index_Sw_xP + N + 2]))/2*(p[index_p + 2 * N]-p[index_p    ])/2/hy
+        boundary4 = hx*(l_w(Sw[index_Sw_xP        ])+l_w(Sw[index_Sw_xP     + 1]))/2*(p[index_p        ]+ hy*u_inj/l_w(Sw[index_Swt-1*N])-p[index_p + N])/2/hy
+        Swt[index_Swt] += (boundary3 + boundary4) / phi / hx / hy
+
+        j = M-1
+        index_Swt = i + N * j
+        index_p = i + (j - 1) * N
+        index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+
+        boundary3 = hx*(l_w(Sw[index_Sw_xP + N + 1])+l_w(Sw[index_Sw_xP + N + 2]))/2*(p[index_p + 1 * N]-p[index_p    ])/2/hy
+        boundary4 = hx*(l_w(Sw[index_Sw_xP        ])+l_w(Sw[index_Sw_xP     + 1]))/2*(p[index_p - 1*N    ]-p[index_p + N])/2/hy
+        Swt[index_Swt] += (boundary3 + boundary4) / phi / hx / hy
+
+        j = M
+        index_Swt = i + N * j
+        index_p = i + (j - 1) * N
+        index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+
+        boundary3 = 0
+        boundary4 = hx * (l_w(Sw[index_Sw_xP]) + l_w(Sw[index_Sw_xP + 1])) / 2 * (p[index_p - N] - p[index_p]) / 2 / hy
+        Swt[index_Swt] += (boundary3 + boundary4) / phi / hx / hy * 2
+
+    for j in range(2,M-1):
+        for i in range(N):
+            index_Swt = i + N * j
+            index_p = i + (j - 1) * N
+            index_Sw_xP = N * (M + 1) + i + (j - 1) * (N + 1)
+
+            boundary3 = hx*(l_w(Sw[index_Sw_xP + N + 1])+l_w(Sw[index_Sw_xP + N + 2]))/2*(p[index_p + 2 * N]-p[index_p    ])/2/hy
+            boundary4 = hx*(l_w(Sw[index_Sw_xP        ])+l_w(Sw[index_Sw_xP     + 1]))/2*(p[index_p - 1*N    ]-p[index_p + N])/2/hy
+            Swt[index_Swt] += (boundary3 + boundary4) / phi / hx / hy
+
     return Swt
 
 def FVM_plot_Sw(Sw,N,M,L,W,c):
@@ -799,85 +1331,107 @@ def FVM_diffusion(SwInput,N,M):
 # fig.show()
 
 #
-# Sw_plot = FVM_plot_Sw(Sw,N,M,L,W,c)
-# p       = FVM_pressure(Sw,N,M,hx,hy)
-# plt.ion()
-# fig = plt.figure()
-# ax  = fig.add_subplot(121)
-# l   = ax.contourf(Sw_plot)
-# px  = fig.add_subplot(122)
-# k   = px.contourf(p.reshape(M,N))
-#
-# fig.canvas.draw()
-# contour_axis = plt.gca()
-
+Sw_plot = FVM_plot_Sw(Sw,N,M,L,W,c)
 p       = FVM_pressure(Sw,N,M,hx,hy)
-Swt     = FVM_Sw_t(p,Sw,N,M,hx,hy)
+Swt     = FVM_Sw_t_3(p,Sw,N,M,hx,hy)
+# for i in range(2):
+#     Sw += dt*FVM_Sw_t_4(p,Sw,N,M,hx,hy)
+#     Swt     = dt*FVM_Sw_t_4(p,Sw,N,M,hx,hy)
+# print(Swt)
+
+
+x = np.linspace(0,W,2*N+1)
+y = np.linspace(0,L,2*M+1)
+X,Y = np.meshgrid(x, y)
+
+plt.ion()
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+ax.plot_surface(X, Y, Sw_plot,cmap="coolwarm",linewidth=0,antialiased=False)
+
+ax.view_init(20, 30)
+fig.canvas.draw()
+contour_axis = plt.gca()
+
+jdx = 4
+for i in range(N):
+    Sw[N*jdx+i] += delta*(1+math.sin(kNum*2*math.pi*i*hx/W))
+
+
 
 ## run newton backward.
-#for a speedup one can calculate the pressure once outside the while loop. This seems to give similar solutions. I am however not sure if it converges correctly...
+# for a speedup one can calculate the pressure once outside the while loop. This seems to give similar solutions. I am however not sure if it converges correctly...
 for i in tqdm.tqdm(range(Tstep)):
-    # if i == 94*3:
-    #     idx = 3
-    #     jdx = 9
-    #     indexSw = N * (M + 1) + idx + jdx * (N + 1)
-    #     Sw[indexSw] = 0.3
-    #     idx = 2
-    #     jdx = 9
-    #     indexSw = N * (M + 1) + idx + jdx * (N + 1)
-    #     Sw[indexSw] = 0.3
+
 
     Sw0 = Sw
-    # euler forward
-    p0      = FVM_pressure(Sw0, N, M, hx, hy)
-    Swt0    = FVM_Sw_t_2(p0, Sw0, N, M, hx, hy)
-    Sw0diff = FVM_diffusion(Sw0,N,M)
-    # Sw_forward = Sw0diff + dt*Swt0
 
     error = 1
-    # p=FVM_pressure(Sw,c,N,M,hx,hy)
-    while error > eps:
-        p       = FVM_pressure(Sw,N,M,hx,hy)
-        Swt     = FVM_Sw_t_2(p,Sw,N,M,hx,hy)
-        # Sw_new  = FVM_diffusion_add(Sw0,Swt,dt,N,M)
-        Sw_new  = Sw0 + dt * Swt
+    # p = FVM_pressure(Sw, N, M, hx, hy)
+    # Swt     = FVM_Sw_t_4(p,Sw,N,M,hx,hy)
+    # Sw = Sw + dt*Swt
 
-        # alpha = 0.1
-        # Sw_new = Sw0 * (1 - alpha) + Sw0diff * alpha + dt * Swt
+    # p       = FVM_pressure(Sw,N,M,hx,hy)
+    while error > eps:
+        # p       = FVM_pressure_CG(p, Sw, N, M, hx, hy)
+        p = FVM_pressure(Sw, N, M, hx, hy)
+        Swt     = FVM_Sw_t_3(p,Sw,N,M,hx,hy)
+        Sw_new  = Sw0 + dt * Swt
 
         error   = np.linalg.norm(np.divide(Sw_new-Sw,Sw0),np.inf)
         Sw      = Sw_new
         # print(error)
 
-    alpha   = 1/beun_factor
-    Sw      = Sw0 * (1 - alpha) + Sw0diff * alpha + dt * Swt
+    Sw_plot = FVM_plot_Sw(Sw, N, M, L, W, c)
+    ax = plt.axes(projection='3d')
+    ax.view_init(20, 0+60*i/Tstep)
+    ax.plot_surface(X, Y, Sw_plot,cmap="coolwarm",linewidth=0,antialiased=True)
+
+    fig.canvas.draw()
+    contour_axis = plt.gca()
+
 
 
 ## plotting
-Sw_plot = FVM_plot_Sw(Sw,N,M,L,W,c)
-import plotly.graph_objects as go
+if plotting:
+    Sw_plot = FVM_plot_Sw(Sw,N,M,L,W,c)
+    import plotly.graph_objects as go
 
-fig=go.Figure(data=[go.Surface(z=Sw_plot,x=np.linspace(0,W,2*N+1),y=np.linspace(0,L,2*M+1))])
-fig.show()
+    fig=go.Figure(data=[go.Surface(z=Sw_plot,x=np.linspace(0,W,2*N+1),y=np.linspace(0,L,2*M+1))])
+    fig.show()
 
 # import plotly.graph_objects as go
 # fig = go.Figure(data=[go.Surface( z=p.reshape(M,N),x = np.linspace(0,W,N), y = np.linspace(0,L,M))])
 # fig.show()
-
-
-
-# time = timeit(
-#  lambda: FVM_pressure(Sw,c,N,M,hx,hy),
-#  number=100
-# )
-# print("Pressure Calc:",time)
 #
-# p = FVM_pressure(Sw,c,N,M,hx,hy)
-# time = timeit(
-#  lambda: FVM_Sw_t(p,Sw,c,N,M,hx,hy),
+# timeP_Mat = timeit(
+#  lambda: FVM_pressure_Mat(Sw,N,M,hx,hy),
 #  number=100
 # )
-# print("Swt Calc:",time)
+# print("Pressure Mat Calc:",timeP_Mat/100)
+#
+#
+#
+# timeP = timeit(
+#  lambda: FVM_pressure(Sw,N,M,hx,hy),
+#  number=100
+# )
+# print("Pressure Calc:",(timeP-timeP_Mat)/100)
+#
+# p = FVM_pressure(Sw,N,M,hx,hy)
+#
+#
+# timePcg = timeit(
+#  lambda: FVM_pressure_CG(p,Sw,N,M,hx,hy),
+#  number=1
+# )
+# print("Pressure CG Calc:",timePcg/1)
+#
+# timeSwt = timeit(
+#  lambda: FVM_Sw_t_3(p,Sw,N,M,hx,hy),
+#  number=100
+# )
+# print("Swt Calc:",timeSwt/100)
 
 
 # Swt1 = Swt[0:( N * (M + 1))]

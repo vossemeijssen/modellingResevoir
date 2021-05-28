@@ -1,6 +1,7 @@
 from numba import jit
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import tqdm
 import math
 from reservoirModule import *
@@ -9,34 +10,44 @@ from scipy import sparse
 from timeit import timeit
 import scipy
 import random
+import time
 
 
+## general grid values (note that y dir is injection direction)
+hx = 0.1    # x spacing
+hy = 0.1    # y spacing
+W  = 3      # x width
+L  = 2.3    # y width
 
-hx = 0.25
-hy = 0.25
-W  = 2
-L  = 3
+## disturbance
+kNum = [3,4]    # list of k values
+delta = 0.2     # total height of total disturbance
+jdx = 0         # where the disturbance is applied (do not touch)
 
-kNum = 1
-delta = 0.001
+## beun factor, how much more time steps we take, only increase it the model does not converge
+beun_factor  = 5
 
-beun_factor  = 200
+## plotting stuff
+plotting = True         # nice 3d plot at the end
+contPlotting = True     # contour plots during simulation (notes this takes some time to compute, it limits the number of iterations per second to 2 for me)
 
-plotting = False
-
+# how much time to simulate
 t_end = 0.1
 
-eps = 1e-9
+## accuracy targets
+epsSolver = 1e-6        # accuracy target for pressure solver
+epsEulerBack = 1e-6     # accuracy for Euler Backward step
 
+# constants, change them here
 c = Constants(
     phi = 0.1,  # Porosity
     u_inj = 1.0,  # Water injection speed
-    mu_w = 1.e-3,
+    mu_w = 10.e-3,
     mu_o = 0.04,
     kappa = 1,
     k_rw0 = 1,
     k_ro0 = 1,
-    n_w = 4,  # >=1
+    n_w = 2,  # >=1
     n_o = 2,  # >=1
     S_or = 0.1,  # Oil rest-saturation
     S_wc = 0.1,
@@ -44,19 +55,22 @@ c = Constants(
     labda = 1,
     dx = 1)
 
-phi = 0.1 # Porosity
-u_inj = 1.0 # Water injection speed
-mu_w = 1.e-3
-mu_o = 0.04
-kappa = 1.0
-k_rw0 = 1.0
-k_ro0 = 1.0
-n_w = 4.0  # >=1
-n_o = 2.0  # >=1
-S_or = 0.1  # Oil rest-saturation
-S_wc = 0.1
-sigma = 1.0
-labda = 1.0
+# you can change the pressure calculation on line 1433
+
+################################################################# do not touch after here ###################
+phi = c.phi # Porosity
+u_inj = c.u_inj # Water injection speed
+mu_w = c.mu_w
+mu_o = c.mu_o
+kappa = c.kappa
+k_rw0 = c.k_rw0
+k_ro0 = c.k_ro0
+n_w = c.n_w  # >=1
+n_o = c.n_o  # >=1
+S_or = c.S_or  # Oil rest-saturation
+S_wc = c.S_wc
+sigma = c.sigma
+labda = c.labda
 dx = 1.0
 
 N = int(W / hx)
@@ -92,10 +106,10 @@ def l_t(S_w):
 
 
 def magic_function(x, c):
-    return df_dSw(x, c) - (f_w(x, c) - f_w(c.S_wc, c))/(x - c.S_wc)
+    return df_dSw(x, c) - (f_w(x, c) - f_w(S_wc, c))/(x - S_wc)
 
 S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
-shockspeed = c.u_inj/c.phi*df_dSw(S_w_shock, c)
+shockspeed = u_inj/phi*df_dSw(S_w_shock, c)
 
 # why the constant 6?
 dt = min(hx,hy)/shockspeed/beun_factor
@@ -107,6 +121,11 @@ print("shockspeed = ",shockspeed,", shock position = ",shockspeed*dt*Tstep,", ma
 Sw = 0.1*np.ones(N*(M+1) + (N+1)*M)
 for i in range(N):
     Sw[i] = 0.9
+
+for k_i in kNum:
+    for i in range(N+1):
+        Sw[N*(M+1) + N*jdx+i] += delta*(1-math.cos(k_i*2*math.pi*i*hx/W))/2/len(kNum)
+        # Sw[N*(M+1) + N * jdx + i] += delta * random.random()
 
 
 
@@ -255,9 +274,9 @@ def FVM_pressure_CG(pOld,Sw,N,M,hx,hy):
     St   = np.transpose(S)
     StS = np.dot(St,S)
     Stf = np.dot(St,f)
-    # p = isolve.cg(StS,Stf,pOld,eps)
-    # p = isolve.bicgstab(StS,Stf,pOld,eps)
-    p = scipy.sparse.linalg.lsqr(S,f,x0 = pOld)
+    p = isolve.cg(StS,Stf,pOld,epsSolver)
+    # p = isolve.bicgstab(StS,Stf,pOld,epsSolver)
+    # p = scipy.sparse.linalg.lsqr(S,f,x0 = pOld)
     return p[0]
 
 def FVM_Sw_t(p,Sw,N,M,hx,hy):
@@ -1181,8 +1200,9 @@ def FVM_Sw_t_3(p,Sw,N,M,hx,hy):
 
     return Swt
 
-def FVM_plot_Sw(Sw,N,M,L,W,c):
-    Sw_plot=np.zeros([2*M+1,2*N+1])
+@jit(nopython=True)
+def FVM_plot_Sw(Sw,N,M,L,W):
+    Sw_plot=np.zeros((2*M+1,2*N+1))
     Sw1=Sw[0:(N*(M+1))].reshape(M+1,N)
 
     Sw2=Sw[(N*(M+1)):].reshape(M,N+1)
@@ -1331,39 +1351,75 @@ def FVM_diffusion(SwInput,N,M):
 # fig.show()
 
 #
-Sw_plot = FVM_plot_Sw(Sw,N,M,L,W,c)
-p       = FVM_pressure(Sw,N,M,hx,hy)
-Swt     = FVM_Sw_t_3(p,Sw,N,M,hx,hy)
+
 # for i in range(2):
 #     Sw += dt*FVM_Sw_t_4(p,Sw,N,M,hx,hy)
 #     Swt     = dt*FVM_Sw_t_4(p,Sw,N,M,hx,hy)
 # print(Swt)
+Sw_plot = FVM_plot_Sw(Sw,N,M,L,W)
+p       = FVM_pressure(Sw,N,M,hx,hy)
+Swt     = FVM_Sw_t_3(p,Sw,N,M,hx,hy)
 
 
-x = np.linspace(0,W,2*N+1)
-y = np.linspace(0,L,2*M+1)
-X,Y = np.meshgrid(x, y)
+if contPlotting:
+    x = np.linspace(0,W,2*N+1)
+    y = np.linspace(0,L,2*M+1)
+    Xsw,Ysw = np.meshgrid(x, y)
 
-plt.ion()
-fig = plt.figure()
-ax = plt.axes(projection='3d')
-ax.plot_surface(X, Y, Sw_plot,cmap="coolwarm",linewidth=0,antialiased=False)
+    x = np.linspace(0,W,N)
+    y = np.linspace(0,L,M)
+    Xp,Yp = np.meshgrid(x, y)
 
-ax.view_init(20, 30)
-fig.canvas.draw()
-contour_axis = plt.gca()
+    plt.ion()
+    fig = plt.figure()
 
-jdx = 4
-for i in range(N):
-    Sw[N*jdx+i] += delta*(1+math.sin(kNum*2*math.pi*i*hx/W))
+    ax = fig.add_subplot(1, 2, 1)
+    # ax.plot_surface(Xsw, Ysw, Sw_plot,cmap="coolwarm",linewidth=0,antialiased=False)
+    ax.contourf(Xsw,Ysw,Sw_plot)
+    # ax.view_init(20, 30)
+
+    bx = fig.add_subplot(1, 2, 2)
+    # bx.plot_surface(Xp, Yp, p.reshape(M,N),cmap="coolwarm",linewidth=0,antialiased=False)
+    bx.contourf(Xp,Yp,p.reshape(M,N))
+    # bx.view_init(20, 30)
+
+    fig.canvas.draw()
+    fig.canvas.flush_events()
+    # contour_axis = plt.gca()
+
+
+
+# ax.clear()
+# ax.plot_surface(X, Y, Sw_plot,cmap="coolwarm",linewidth=0,antialiased=True)
+# ax.view_init(20, 90)
+# fig.canvas.draw()
+
+def updatePlot(Sw_plot,i):
+    ax.clear()
+    # ax.plot_surface(Xsw, Ysw, Sw_plot, cmap="coolwarm", linewidth=0, antialiased=True)
+    # ax.view_init(20, 120-60*i/Tstep)
+    ax.contourf(Xsw, Ysw, Sw_plot)
+
+    bx.clear()
+    # bx.plot_surface(Xp, Yp, p.reshape(M, N), cmap="coolwarm", linewidth=0, antialiased=False)
+    # bx.view_init(20, 120 - 60 * i / Tstep)
+    bx.contourf(Xp, Yp, p.reshape(M, N))
+
+    fig.canvas.draw()
+    fig.canvas.flush_events()
+
+
+
+
+
+
+
 
 
 
 ## run newton backward.
 # for a speedup one can calculate the pressure once outside the while loop. This seems to give similar solutions. I am however not sure if it converges correctly...
 for i in tqdm.tqdm(range(Tstep)):
-
-
     Sw0 = Sw
 
     error = 1
@@ -1372,9 +1428,9 @@ for i in tqdm.tqdm(range(Tstep)):
     # Sw = Sw + dt*Swt
 
     # p       = FVM_pressure(Sw,N,M,hx,hy)
-    while error > eps:
-        # p       = FVM_pressure_CG(p, Sw, N, M, hx, hy)
-        p = FVM_pressure(Sw, N, M, hx, hy)
+    while error > epsEulerBack:
+        p       = FVM_pressure_CG(p, Sw, N, M, hx, hy)
+        # p       = FVM_pressure(Sw, N, M, hx, hy)                      # take this pressure calculation for most accurate pressure (takes more time)
         Swt     = FVM_Sw_t_3(p,Sw,N,M,hx,hy)
         Sw_new  = Sw0 + dt * Swt
 
@@ -1382,19 +1438,18 @@ for i in tqdm.tqdm(range(Tstep)):
         Sw      = Sw_new
         # print(error)
 
-    Sw_plot = FVM_plot_Sw(Sw, N, M, L, W, c)
-    ax = plt.axes(projection='3d')
-    ax.view_init(20, 0+60*i/Tstep)
-    ax.plot_surface(X, Y, Sw_plot,cmap="coolwarm",linewidth=0,antialiased=True)
+    if i%1 == 0 and contPlotting:
+        Sw_plot = FVM_plot_Sw(Sw, N, M, L, W)
+        updatePlot(Sw_plot, i)
 
-    fig.canvas.draw()
-    contour_axis = plt.gca()
+
+
 
 
 
 ## plotting
 if plotting:
-    Sw_plot = FVM_plot_Sw(Sw,N,M,L,W,c)
+    Sw_plot = FVM_plot_Sw(Sw,N,M,L,W)
     import plotly.graph_objects as go
 
     fig=go.Figure(data=[go.Surface(z=Sw_plot,x=np.linspace(0,W,2*N+1),y=np.linspace(0,L,2*M+1))])

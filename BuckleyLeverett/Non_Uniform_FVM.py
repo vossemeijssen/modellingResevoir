@@ -14,29 +14,29 @@ import time
 
 
 ## general grid values (note that y dir is injection direction)
-hx = 0.1    # x spacing
-hy = 0.1    # y spacing
-W  = 3      # x width
-L  = 2.3    # y width
+hx = 0.025    # x spacing
+hy = 0.025    # y spacing
+W  = 3        # x width
+L  = 2.3      # y width
 
 ## disturbance
-kNum = [3,4]    # list of k values
-delta = 0.2     # total height of total disturbance
+kNum = [3]      # list of k values
+delta = 0.3     # total height of total disturbance
 jdx = 0         # where the disturbance is applied (do not touch)
 
-## beun factor, how much more time steps we take, only increase it the model does not converge
-beun_factor  = 5
+## beun factor, how much more time steps we take, only increase it if the model does not converge
+beun_factor  = 10
 
 ## plotting stuff
 plotting = True         # nice 3d plot at the end
-contPlotting = True     # contour plots during simulation (notes this takes some time to compute, it limits the number of iterations per second to 2 for me)
+contPlotting = False     # contour plots during simulation (notes this takes some time to compute, it limits the number of iterations per second to 2 for me)
 
 # how much time to simulate
 t_end = 0.1
 
 ## accuracy targets
-epsSolver = 1e-6        # accuracy target for pressure solver
-epsEulerBack = 1e-6     # accuracy for Euler Backward step
+epsSolver = 1e-10        # accuracy target for pressure solver
+epsEulerBack = 1e-3     # accuracy for Euler Backward step
 
 # constants, change them here
 c = Constants(
@@ -76,6 +76,8 @@ dx = 1.0
 N = int(W / hx)
 M = int(L / hy)
 
+## functions
+
 @jit(nopython=True)
 def limiter(phi):
     if np.isnan(phi):
@@ -108,29 +110,9 @@ def l_t(S_w):
 def magic_function(x, c):
     return df_dSw(x, c) - (f_w(x, c) - f_w(S_wc, c))/(x - S_wc)
 
-S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
-shockspeed = u_inj/phi*df_dSw(S_w_shock, c)
-
-# why the constant 6?
-dt = min(hx,hy)/shockspeed/beun_factor
-Tstep = int(t_end/dt)
-
-print("shockspeed = ",shockspeed,", shock position = ",shockspeed*dt*Tstep,", maximum dt = ",min(hx,hy)/shockspeed/2)
-
-
-Sw = 0.1*np.ones(N*(M+1) + (N+1)*M)
-for i in range(N):
-    Sw[i] = 0.9
-
-for k_i in kNum:
-    for i in range(N+1):
-        Sw[N*(M+1) + N*jdx+i] += delta*(1-math.cos(k_i*2*math.pi*i*hx/W))/2/len(kNum)
-        # Sw[N*(M+1) + N * jdx + i] += delta * random.random()
-
-
 
 @jit(nopython=True)
-def FVM_pressure_Mat(Sw,N,M,hx,hy):
+def FVM_pressure_Mat(Sw):
     # set up S matrix for each volume, and each pressure
     S = np.zeros( (N*M+1, N*M))
 
@@ -263,20 +245,207 @@ def FVM_pressure_Mat(Sw,N,M,hx,hy):
     # p = np.linalg.lstsq(S,f,rcond=None)
     return S,f
 
-def FVM_pressure(Sw,N,M,hx,hy):
-    S, f = FVM_pressure_Mat(Sw,N,M,hx,hy)
+@jit(nopython=True)
+def FVM_pressure_MatSparse(Sw):
+    # set up S matrix for each volume, and each pressure
+
+    row     = np.zeros(10 * N * M - 2 * (N + M) + 1, dtype=np.uintc)
+    col     = np.zeros(10 * N * M - 2 * (N + M) + 1, dtype=np.uintc)
+    data    = np.zeros(10 * N * M - 2 * (N + M) + 1, dtype=np.float64)
+
+    index2coo = 0
+    i = 0; j = 0
+    index_p = i + j * N
+    index_Sw_xP = N * (M + 1) + i + j * (N + 1)
+    index_Sw_xN = N * (M + 1) + i + 1 + j * (N + 1)
+    index_Sw_yN = i + (j + 1) * N
+    index_Sw_yP = i + j * N
+
+    row[index2coo] = index_p;   col[index2coo] = index_p;       data[index2coo] = -hy / hx * l_t(Sw[index_Sw_xN]) - hx / hy * l_t(Sw[index_Sw_yN])
+    index2coo += 1
+    row[index2coo] = index_p;   col[index2coo] = index_p + 1;   data[index2coo] = hy / hx * l_t(Sw[index_Sw_xN])
+    index2coo += 1
+    row[index2coo] = index_p;   col[index2coo] = index_p + N;   data[index2coo] = hx / hy * l_t(Sw[index_Sw_yN])
+    index2coo += 1
+
+    i = 0; j = M - 1
+    index_p = i + j * N
+    index_Sw_xP = N * (M + 1) + i + j * (N + 1)
+    index_Sw_xN = N * (M + 1) + i + 1 + j * (N + 1)
+    index_Sw_yN = i + (j + 1) * N
+    index_Sw_yP = i + j * N
+
+    row[index2coo] = index_p;   col[index2coo] = index_p;       data[index2coo] = -hy / hx * l_t(Sw[index_Sw_xN]) - hx / hy * l_t(Sw[index_Sw_yP])
+    index2coo += 1
+    row[index2coo] = index_p;   col[index2coo] = index_p + 1;   data[index2coo] = hy / hx * l_t(Sw[index_Sw_xN])
+    index2coo += 1
+    row[index2coo] = index_p;   col[index2coo] = index_p - N;   data[index2coo] = hx / hy * l_t(Sw[index_Sw_yP])
+    index2coo += 1
+
+    i = N - 1; j = 0
+    index_p = i + j * N
+    index_Sw_xP = N * (M + 1) + i + j * (N + 1)
+    index_Sw_xN = N * (M + 1) + i + 1 + j * (N + 1)
+    index_Sw_yN = i + (j + 1) * N
+    index_Sw_yP = i + j * N
+
+    row[index2coo] = index_p;   col[index2coo] = index_p;       data[index2coo] = - hy / hx * l_t(Sw[index_Sw_xP]) - hx / hy * l_t(Sw[index_Sw_yN])
+    index2coo += 1
+    row[index2coo] = index_p;   col[index2coo] = index_p - 1;   data[index2coo] = hy / hx * l_t(Sw[index_Sw_xP])
+    index2coo += 1
+    row[index2coo] = index_p;   col[index2coo] = index_p + N;   data[index2coo] = hx / hy * l_t(Sw[index_Sw_yN])
+    index2coo += 1
+
+    i = N - 1; j = M - 1
+    index_p = i + j * N
+    index_Sw_xP = N * (M + 1) + i + j * (N + 1)
+    index_Sw_xN = N * (M + 1) + i + 1 + j * (N + 1)
+    index_Sw_yN = i + (j + 1) * N
+    index_Sw_yP = i + j * N
+
+    row[index2coo] = index_p;   col[index2coo] = index_p;       data[index2coo] = - hy / hx * l_t(Sw[index_Sw_xP]) - hx / hy * l_t(Sw[index_Sw_yP])
+    index2coo += 1
+    row[index2coo] = index_p;   col[index2coo] = index_p - 1;   data[index2coo] = hy / hx * l_t(Sw[index_Sw_xP])
+    index2coo += 1
+    row[index2coo] = index_p;   col[index2coo] = index_p - N;   data[index2coo] = hx / hy * l_t(Sw[index_Sw_yP])
+    index2coo += 1
+
+
+    # i = 0 and i == N - 1
+    for j in range(1,M-1):
+        i = 0
+        index_p = i + j * N
+        index_Sw_xP = N * (M + 1) + i + j * (N + 1)
+        index_Sw_xN = N * (M + 1) + i + 1 + j * (N + 1)
+        index_Sw_yN = i + (j + 1) * N
+        index_Sw_yP = i + j * N
+
+        row[index2coo] = index_p;   col[index2coo] = index_p;       data[index2coo] = -hy / hx * l_t(Sw[index_Sw_xN]) - hx / hy * l_t(Sw[index_Sw_yN]) - hx / hy * l_t(Sw[index_Sw_yP])
+        index2coo += 1
+        row[index2coo] = index_p;   col[index2coo] = index_p + 1;   data[index2coo] = hy / hx * l_t(Sw[index_Sw_xN])
+        index2coo += 1
+        row[index2coo] = index_p;   col[index2coo] = index_p + N;   data[index2coo] = hx / hy * l_t(Sw[index_Sw_yN])
+        index2coo += 1
+        row[index2coo] = index_p;   col[index2coo] = index_p - N;   data[index2coo] = hx / hy * l_t(Sw[index_Sw_yP])
+        index2coo += 1
+
+
+        i = N - 1
+        index_p = i + j * N
+        index_Sw_xP = N * (M + 1) + i + j * (N + 1)
+        index_Sw_xN = N * (M + 1) + i + 1 + j * (N + 1)
+        index_Sw_yN = i + (j + 1) * N
+        index_Sw_yP = i + j * N
+
+        row[index2coo] = index_p;   col[index2coo] = index_p;       data[index2coo] = - hy / hx * l_t(Sw[index_Sw_xP]) - hx / hy * l_t(Sw[index_Sw_yN]) - hx / hy * l_t(Sw[index_Sw_yP])
+        index2coo += 1
+        row[index2coo] = index_p;   col[index2coo] = index_p - 1;   data[index2coo] = hy / hx * l_t(Sw[index_Sw_xP])
+        index2coo += 1
+        row[index2coo] = index_p;   col[index2coo] = index_p + N;   data[index2coo] = hx / hy * l_t(Sw[index_Sw_yN])
+        index2coo += 1
+        row[index2coo] = index_p;   col[index2coo] = index_p - N;   data[index2coo] = hx / hy * l_t(Sw[index_Sw_yP])
+        index2coo += 1
+
+    # for j = 0 and j = M - 1
+    for i in range(1,N-1):
+        j = 0
+        index_p = i + j * N
+        index_Sw_xP = N * (M + 1) + i + j * (N + 1)
+        index_Sw_xN = N * (M + 1) + i + 1 + j * (N + 1)
+        index_Sw_yN = i + (j + 1) * N
+        index_Sw_yP = i + j * N
+
+        row[index2coo] = index_p;   col[index2coo] = index_p;       data[index2coo] = -hy / hx * l_t(Sw[index_Sw_xN]) - hy / hx * l_t(Sw[index_Sw_xP]) - hx / hy * l_t(Sw[index_Sw_yN])
+        index2coo += 1
+        row[index2coo] = index_p;   col[index2coo] = index_p + 1;   data[index2coo] = hy / hx * l_t(Sw[index_Sw_xN])
+        index2coo += 1
+        row[index2coo] = index_p;   col[index2coo] = index_p - 1;   data[index2coo] = hy / hx * l_t(Sw[index_Sw_xP])
+        index2coo += 1
+        row[index2coo] = index_p;   col[index2coo] = index_p + N;   data[index2coo] = hx / hy * l_t(Sw[index_Sw_yN])
+        index2coo += 1
+
+        j = M - 1
+        index_p = i + j * N
+        index_Sw_xP = N * (M + 1) + i + j * (N + 1)
+        index_Sw_xN = N * (M + 1) + i + 1 + j * (N + 1)
+        index_Sw_yN = i + (j + 1) * N
+        index_Sw_yP = i + j * N
+
+        row[index2coo] = index_p;   col[index2coo] = index_p;       data[index2coo] = -hy / hx * l_t(Sw[index_Sw_xN]) - hy / hx * l_t(Sw[index_Sw_xP]) - hx / hy * l_t(Sw[index_Sw_yP])
+        index2coo += 1
+        row[index2coo] = index_p;   col[index2coo] = index_p + 1;   data[index2coo] = hy / hx * l_t(Sw[index_Sw_xN])
+        index2coo += 1
+        row[index2coo] = index_p;   col[index2coo] = index_p - 1;   data[index2coo] = hy / hx * l_t(Sw[index_Sw_xP])
+        index2coo += 1
+        row[index2coo] = index_p;   col[index2coo] = index_p - N;   data[index2coo] = hx / hy * l_t(Sw[index_Sw_yP])
+        index2coo += 1
+
+    for i in range(1,N-1):
+        for j in range(1,M-1):
+            index_p = i + j * N
+            index_Sw_xP = N * (M + 1) + i + j * (N + 1)
+            index_Sw_xN = N * (M + 1) + i + 1 + j * (N + 1)
+            index_Sw_yN = i + (j + 1) * N
+            index_Sw_yP = i + j * N
+
+            row[index2coo] = index_p;   col[index2coo] = index_p;       data[index2coo] = -hy / hx * l_t(Sw[index_Sw_xN]) - hy / hx * l_t(Sw[index_Sw_xP]) - hx / hy * l_t( Sw[index_Sw_yN]) - hx / hy * l_t(Sw[index_Sw_yP])
+            index2coo += 1
+            row[index2coo] = index_p;   col[index2coo] = index_p + 1;   data[index2coo] = hy / hx * l_t(Sw[index_Sw_xN])
+            index2coo += 1
+            row[index2coo] = index_p;   col[index2coo] = index_p - 1;   data[index2coo] = hy / hx * l_t(Sw[index_Sw_xP])
+            index2coo += 1
+            row[index2coo] = index_p;   col[index2coo] = index_p + N;   data[index2coo] = hx / hy * l_t(Sw[index_Sw_yN])
+            index2coo += 1
+            row[index2coo] = index_p;   col[index2coo] = index_p - N;   data[index2coo] = hx / hy * l_t(Sw[index_Sw_yP])
+            index2coo += 1
+
+    row[-1]  = N*M
+    col[-1]  = N*M-1
+    data[-1] = 1
+
+
+
+    f = np.zeros(N*M+1)
+    for i in range(N):
+        for j in range(M):
+            index_p = i + j * N
+            if j == 0:
+                f[index_p] = -hx*u_inj
+            elif j == M-1:
+                f[index_p] = hx*u_inj
+
+    l = np.zeros(N*M)
+    l[-1] = 1.0
+    # S = np.vstack((S,l))
+    # S[N*M,N*M-1] = 1.0
+
+    # p = np.linalg.lstsq(S,f,rcond=None)
+    return row,col,data,f
+
+def FVM_pressure(Sw):
+    S, f = FVM_pressure_Mat(Sw)
     p = np.linalg.lstsq(S,f,rcond=None)
     # p = scipy.sparse.linalg.lsqr(S,)
     return p[0]
 
-def FVM_pressure_CG(pOld,Sw,N,M,hx,hy):
-    S, f = FVM_pressure_Mat(Sw, N, M, hx, hy)
-    St   = np.transpose(S)
-    StS = np.dot(St,S)
-    Stf = np.dot(St,f)
-    p = isolve.cg(StS,Stf,pOld,epsSolver)
-    # p = isolve.bicgstab(StS,Stf,pOld,epsSolver)
-    # p = scipy.sparse.linalg.lsqr(S,f,x0 = pOld)
+def FVM_pressure_Precon(Sw):
+    row, col, data, f = FVM_pressure_MatSparse(Sw)
+    S = sparse.csr_matrix((data, (row, col)), shape=(N * M + 1, N * M))
+    St = S.transpose()
+    StS = St.dot(S)
+    Stf = St.dot(f)
+    Sinv = sparse.linalg.spilu(StS, drop_tol=epsSolver, fill_factor=100)
+    PreCon = sparse.linalg.LinearOperator((N * M, N * M), Sinv.solve)
+    return PreCon
+
+def FVM_pressure_CG(pOld,Sw,PreCon):
+    row,col,data, f = FVM_pressure_MatSparse(Sw)
+    S   = sparse.csr_matrix((data, (row, col)), shape=(N * M + 1, N * M))
+    St  = S.transpose()
+    StS = St.dot(S)
+    Stf = St.dot(f)
+
+    p = isolve.cg(StS,Stf,x0=pOld,tol=epsSolver,maxiter=None,M=PreCon)
     return p[0]
 
 def FVM_Sw_t(p,Sw,N,M,hx,hy):
@@ -560,7 +729,6 @@ def FVM_Sw_t_2(p,Sw,N,M,hx,hy):
             if j == 0 or j == M:
                 Swt[index_Swt] = Swt[index_Swt]*2
     return Swt
-
 
 def FVM_Sw_t_4(p,Sw,N,M,hx,hy):
     Swt = np.zeros(N*(M+1) + (N+1)*M)
@@ -917,8 +1085,8 @@ def FVM_Sw_t_4(p,Sw,N,M,hx,hy):
                 Swt[index_Swt] = Swt[index_Swt]*2
     return Swt
 
-# @jit(nopython=True)
-def FVM_Sw_t_3(p,Sw,N,M,hx,hy):
+@jit(nopython=True)
+def FVM_Sw_t_3(p,Sw):
     Swt = np.zeros(N*(M+1) + (N+1)*M)
 
     #################################################################### N + 1 x M
@@ -1201,7 +1369,7 @@ def FVM_Sw_t_3(p,Sw,N,M,hx,hy):
     return Swt
 
 @jit(nopython=True)
-def FVM_plot_Sw(Sw,N,M,L,W):
+def FVM_plot_Sw(Sw):
     Sw_plot=np.zeros((2*M+1,2*N+1))
     Sw1=Sw[0:(N*(M+1))].reshape(M+1,N)
 
@@ -1341,26 +1509,52 @@ def FVM_diffusion(SwInput,N,M):
 
     return Swdiff
 
+def updatePlot(Sw_plot,i):
+    ax.clear()
+    # ax.plot_surface(Xsw, Ysw, Sw_plot, cmap="coolwarm", linewidth=0, antialiased=True)
+    # ax.view_init(20, 120-60*i/Tstep)
+    ax.contourf(Xsw,Ysw,Sw_plot,np.linspace(S_wc,1-S_or,20))
+
+    bx.clear()
+    # bx.plot_surface(Xp, Yp, p.reshape(M, N), cmap="coolwarm", linewidth=0, antialiased=False)
+    # bx.view_init(20, 120 - 60 * i / Tstep)
+    bx.contourf(Xp, Yp, p.reshape(M, N),np.linspace(0,max(p),25))
+
+    fig.canvas.draw()
+    fig.canvas.flush_events()
 
 
+##############  start of the code  ###############
+# pre calculations of the 1D problem to find dt
+S_w_shock = bisection(magic_function, (c.S_wc, 1 - c.S_or), 100, c)
+shockspeed = u_inj/phi*df_dSw(S_w_shock, c)
+dt = min(hx,hy)/shockspeed/beun_factor
+Tstep = int(t_end/dt)
 
-# print(p.reshape(M,N))
+# print info
+print("shockspeed = ",shockspeed,", shock position = ",shockspeed*dt*Tstep,", maximum dt = ",min(hx,hy)/shockspeed/2)
 
-# import plotly.graph_objects as go
-# fig = go.Figure(data=[go.Surface( z=p.reshape(M,N),x = np.linspace(0,W,N), y = np.linspace(0,L,M))])
-# fig.show()
+# set up initial Sw
+Sw = 0.1*np.ones(N*(M+1) + (N+1)*M, dtype=np.float64)
+for i in range(N):
+    Sw[i] = 0.9
 
-#
+for k_i in kNum:
+    for i in range(N+1):
+        Sw[N*(M+1) + N*jdx+i] += delta*(1-math.cos(k_i*2*math.pi*i*hx/W))/2/len(kNum)
 
-# for i in range(2):
-#     Sw += dt*FVM_Sw_t_4(p,Sw,N,M,hx,hy)
-#     Swt     = dt*FVM_Sw_t_4(p,Sw,N,M,hx,hy)
-# print(Swt)
-Sw_plot = FVM_plot_Sw(Sw,N,M,L,W)
-p       = FVM_pressure(Sw,N,M,hx,hy)
-Swt     = FVM_Sw_t_3(p,Sw,N,M,hx,hy)
+# Pre compile functions with numba
+Sw_plot = FVM_plot_Sw(Sw)
+print("Compiled FVM_plot_Sw")
+FVM_pressure_MatSparse(Sw)
+print("Compiled FVM_pressure_MatSparse")
+PreCon  = FVM_pressure_Precon(Sw)
+p       = FVM_pressure_CG(np.zeros(N*M), Sw, PreCon)
+print("Calculated initial pressure")
+Swt     = FVM_Sw_t_3(p,Sw)
+print("Compiled FVM_Sw_t_3")
 
-
+# set up continuous plotting
 if contPlotting:
     x = np.linspace(0,W,2*N+1)
     y = np.linspace(0,L,2*M+1)
@@ -1374,64 +1568,22 @@ if contPlotting:
     fig = plt.figure()
 
     ax = fig.add_subplot(1, 2, 1)
-    # ax.plot_surface(Xsw, Ysw, Sw_plot,cmap="coolwarm",linewidth=0,antialiased=False)
-    ax.contourf(Xsw,Ysw,Sw_plot)
-    # ax.view_init(20, 30)
+    ax.contourf(Xsw,Ysw,Sw_plot,np.linspace(S_wc,1-S_or,30))
 
     bx = fig.add_subplot(1, 2, 2)
-    # bx.plot_surface(Xp, Yp, p.reshape(M,N),cmap="coolwarm",linewidth=0,antialiased=False)
-    bx.contourf(Xp,Yp,p.reshape(M,N))
-    # bx.view_init(20, 30)
-
-    fig.canvas.draw()
-    fig.canvas.flush_events()
-    # contour_axis = plt.gca()
-
-
-
-# ax.clear()
-# ax.plot_surface(X, Y, Sw_plot,cmap="coolwarm",linewidth=0,antialiased=True)
-# ax.view_init(20, 90)
-# fig.canvas.draw()
-
-def updatePlot(Sw_plot,i):
-    ax.clear()
-    # ax.plot_surface(Xsw, Ysw, Sw_plot, cmap="coolwarm", linewidth=0, antialiased=True)
-    # ax.view_init(20, 120-60*i/Tstep)
-    ax.contourf(Xsw, Ysw, Sw_plot)
-
-    bx.clear()
-    # bx.plot_surface(Xp, Yp, p.reshape(M, N), cmap="coolwarm", linewidth=0, antialiased=False)
-    # bx.view_init(20, 120 - 60 * i / Tstep)
-    bx.contourf(Xp, Yp, p.reshape(M, N))
+    bx.contourf(Xp,Yp,p.reshape(M,N),np.linspace(0,max(p),50))
 
     fig.canvas.draw()
     fig.canvas.flush_events()
 
-
-
-
-
-
-
-
-
-
-## run newton backward.
-# for a speedup one can calculate the pressure once outside the while loop. This seems to give similar solutions. I am however not sure if it converges correctly...
+# run newton backward solver
 for i in tqdm.tqdm(range(Tstep)):
     Sw0 = Sw
-
     error = 1
-    # p = FVM_pressure(Sw, N, M, hx, hy)
-    # Swt     = FVM_Sw_t_4(p,Sw,N,M,hx,hy)
-    # Sw = Sw + dt*Swt
-
-    # p       = FVM_pressure(Sw,N,M,hx,hy)
+    PreCon = FVM_pressure_Precon(Sw)
     while error > epsEulerBack:
-        p       = FVM_pressure_CG(p, Sw, N, M, hx, hy)
-        # p       = FVM_pressure(Sw, N, M, hx, hy)                      # take this pressure calculation for most accurate pressure (takes more time)
-        Swt     = FVM_Sw_t_3(p,Sw,N,M,hx,hy)
+        p       = FVM_pressure_CG(p, Sw, PreCon)
+        Swt     = FVM_Sw_t_3(p,Sw)
         Sw_new  = Sw0 + dt * Swt
 
         error   = np.linalg.norm(np.divide(Sw_new-Sw,Sw0),np.inf)
@@ -1439,79 +1591,18 @@ for i in tqdm.tqdm(range(Tstep)):
         # print(error)
 
     if i%1 == 0 and contPlotting:
-        Sw_plot = FVM_plot_Sw(Sw, N, M, L, W)
+        Sw_plot = FVM_plot_Sw(Sw)
         updatePlot(Sw_plot, i)
 
 
 
-
-
-
-## plotting
+# plotting
 if plotting:
-    Sw_plot = FVM_plot_Sw(Sw,N,M,L,W)
+    Sw_plot = FVM_plot_Sw(Sw)
     import plotly.graph_objects as go
 
     fig=go.Figure(data=[go.Surface(z=Sw_plot,x=np.linspace(0,W,2*N+1),y=np.linspace(0,L,2*M+1))])
     fig.show()
-
-# import plotly.graph_objects as go
-# fig = go.Figure(data=[go.Surface( z=p.reshape(M,N),x = np.linspace(0,W,N), y = np.linspace(0,L,M))])
-# fig.show()
-#
-# timeP_Mat = timeit(
-#  lambda: FVM_pressure_Mat(Sw,N,M,hx,hy),
-#  number=100
-# )
-# print("Pressure Mat Calc:",timeP_Mat/100)
-#
-#
-#
-# timeP = timeit(
-#  lambda: FVM_pressure(Sw,N,M,hx,hy),
-#  number=100
-# )
-# print("Pressure Calc:",(timeP-timeP_Mat)/100)
-#
-# p = FVM_pressure(Sw,N,M,hx,hy)
-#
-#
-# timePcg = timeit(
-#  lambda: FVM_pressure_CG(p,Sw,N,M,hx,hy),
-#  number=1
-# )
-# print("Pressure CG Calc:",timePcg/1)
-#
-# timeSwt = timeit(
-#  lambda: FVM_Sw_t_3(p,Sw,N,M,hx,hy),
-#  number=100
-# )
-# print("Swt Calc:",timeSwt/100)
-
-
-# Swt1 = Swt[0:( N * (M + 1))]
-# Swt2 = Swt[( N * (M + 1)):]
-#
-# Sw1 = Sw[0:( N * (M + 1))]
-# Sw2 = Sw[( N * (M + 1)):]
-
-# import plotly.graph_objects as go
-# fig = go.Figure(data=[go.Surface( z=Swt.reshape(M,N+1),x = np.linspace(0,W,N+1), y = np.linspace(0,L,M))])
-# fig.show()
-# print("N = ",N)
-# print("M = ",M)
-#
-# print("pressure")
-# print(p.reshape(M,N))
-#
-# print("Sw")
-# print(Sw1.reshape(M+1,N))
-# print(Sw2.reshape(M,N+1))
-#
-# print("Swt")
-# print(Swt1.reshape(M+1,N))
-# print(Swt2.reshape(M,N+1))
-#
 
 
 

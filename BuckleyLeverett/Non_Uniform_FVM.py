@@ -14,14 +14,14 @@ import time
 
 
 ## general grid values (note that y dir is injection direction)
-hx = 0.025    # x spacing
-hy = 0.025    # y spacing
-W  = 3        # x width
-L  = 2.3      # y width
+hx = 0.05    # x spacing
+hy = 0.05    # y spacing
+W  = 3.0      # x width
+L  = 4.5      # y width
 
 ## disturbance
 kNum = [3]      # list of k values
-delta = 0.3     # total height of total disturbance
+delta = 0.5     # total height of total disturbance
 jdx = 0         # where the disturbance is applied (do not touch)
 
 ## beun factor, how much more time steps we take, only increase it if the model does not converge
@@ -29,16 +29,18 @@ beun_factor  = 10
 
 ## plotting stuff
 plotting = True         # nice 3d plot at the end
-contPlotting = False     # contour plots during simulation (notes this takes some time to compute, it limits the number of iterations per second to 2 for me)
+contPlotting = True     # contour plots during simulation (notes this takes some time to compute, it limits the number of iterations per second to 2 for me)
+ItPlot   = 50           # how often we plot the continuous plot
 
 # how much time to simulate
-t_end = 0.1
+t_end = 0.2
 
 ## accuracy targets
 epsSolver = 1e-10        # accuracy target for pressure solver
-epsEulerBack = 1e-3     # accuracy for Euler Backward step
+epsEulerBack = 1e-7     # accuracy for Euler Backward step
 
 # constants, change them here
+alpha = 0.005
 c = Constants(
     phi = 0.1,  # Porosity
     u_inj = 1.0,  # Water injection speed
@@ -47,7 +49,7 @@ c = Constants(
     kappa = 1,
     k_rw0 = 1,
     k_ro0 = 1,
-    n_w = 2,  # >=1
+    n_w = 2.2,  # >=1
     n_o = 2,  # >=1
     S_or = 0.1,  # Oil rest-saturation
     S_wc = 0.1,
@@ -730,7 +732,7 @@ def FVM_Sw_t_2(p,Sw,N,M,hx,hy):
                 Swt[index_Swt] = Swt[index_Swt]*2
     return Swt
 
-def FVM_Sw_t_4(p,Sw,N,M,hx,hy):
+def FVM_Sw_t_4(p,Sw):
     Swt = np.zeros(N*(M+1) + (N+1)*M)
 
 
@@ -1474,39 +1476,43 @@ def FVM_plot_Sw_Side(Sw,N,M,L,W,c):
 
     return Sw_plot
 
-def FVM_diffusion(SwInput,N,M):
-    Swdiff = np.copy(SwInput)
-
-    Sw1=SwInput[0:(N*(M+1))].reshape(M+1,N)
-
-    Sw2=SwInput[(N*(M+1)):].reshape(M,N+1)
-
+@jit(nopython=True)
+def FVM_diffusion(SwInput):
+    Swdiff = np.zeros(N*(M+1) + (N+1)*M)
     for i in range(N):
-        for j in range(M+1):
+        for j in range(1,M):
             indexSwDiff = i + j * N
-            indexSw     = N*(M+1) + i + (j-1)*(N+1)
-
-            if j == 0:
-                continue
-                Swdiff[indexSwDiff] = (SwInput[indexSw + N + 1] + SwInput[indexSw + N + 2]) / 2
-            elif j == M:
-                continue
-                Swdiff[indexSwDiff] = (SwInput[indexSw        ] + SwInput[indexSw     + 1]) / 2
+            if i == 0:
+                Swdiff[indexSwDiff] = (SwInput[indexSwDiff + 1] - SwInput[indexSwDiff])/phi/hx/hx                           + (SwInput[indexSwDiff + N] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - N])/phi/hy/hy
+            elif i == N-1:
+                Swdiff[indexSwDiff] = (-SwInput[indexSwDiff] + SwInput[indexSwDiff - 1])/phi/hx/hx                               + (SwInput[indexSwDiff + N] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - N])/phi/hy/hy
             else:
-                Swdiff[indexSwDiff] = (SwInput[indexSw + N + 1] + SwInput[indexSw + N + 2] + SwInput[indexSw] + SwInput[indexSw + 1]) / 4
+                Swdiff[indexSwDiff] = (SwInput[indexSwDiff + 1] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - 1])/phi/hx/hx   + (SwInput[indexSwDiff + N] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - N])/phi/hy/hy
 
     for i in range(N+1):
-        for j in range(M):
+        for j in range(M-1):
             indexSwDiff = N*(M+1) + i + j * (N+1)
-            indexSw     = i - 1 + j * N
-
             if i == 0:
-                Swdiff[indexSwDiff] = (SwInput[indexSw + 1] + SwInput[indexSw + N + 1]) / 2
+                if j == 0:
+                    Swdiff[indexSwDiff] = 2*(SwInput[indexSwDiff + 1] - SwInput[indexSwDiff])/phi/hx/hx + (SwInput[indexSwDiff + N + 1] - SwInput[indexSwDiff])/phi/hy/hy
+                elif j == M-1:
+                    Swdiff[indexSwDiff] = 2*(SwInput[indexSwDiff + 1] - SwInput[indexSwDiff])/phi/hx/hx + (SwInput[indexSwDiff + 0 + 0] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - N - 1])/phi/hy/hy
+                else:
+                    Swdiff[indexSwDiff] = 2*(SwInput[indexSwDiff + 1] - SwInput[indexSwDiff])/phi/hx/hx + (SwInput[indexSwDiff + N + 1] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - N - 1])/phi/hy/hy
             elif i == N:
-                Swdiff[indexSwDiff] = (SwInput[indexSw    ] + SwInput[indexSw + N    ]) / 2
+                if j==0:
+                    Swdiff[indexSwDiff] = 2*(-SwInput[indexSwDiff] + SwInput[indexSwDiff - 1])/phi/hx/hx + (SwInput[indexSwDiff + N + 1] - SwInput[indexSwDiff])/phi/hy/hy
+                elif j==M-1:
+                    Swdiff[indexSwDiff] = 2*(-SwInput[indexSwDiff] + SwInput[indexSwDiff - 1])/phi/hx/hx + (SwInput[indexSwDiff + 0 + 0] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - N - 1])/phi/hy/hy
+                else:
+                    Swdiff[indexSwDiff] = 2*(-SwInput[indexSwDiff] + SwInput[indexSwDiff - 1])/phi/hx/hx + (SwInput[indexSwDiff + N + 1] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - N - 1])/phi/hy/hy
             else:
-                Swdiff[indexSwDiff] = (SwInput[indexSw + 1] + SwInput[indexSw + N + 1] + SwInput[indexSw] + SwInput[indexSw + N]) / 4
-
+                if j == 0:
+                    Swdiff[indexSwDiff] = (SwInput[indexSwDiff + 1] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - 1])/phi/hx/hx + (SwInput[indexSwDiff + N + 1] - 2*SwInput[indexSwDiff] + 0.9)/phi/hy/hy
+                elif j == M-1:
+                    Swdiff[indexSwDiff] = (SwInput[indexSwDiff + 1] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - 1])/phi/hx/hx + (SwInput[indexSwDiff + 0 + 0] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - N - 1])/phi/hy/hy
+                else:
+                    Swdiff[indexSwDiff] = (SwInput[indexSwDiff + 1] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - 1])/phi/hx/hx + (SwInput[indexSwDiff + N + 1] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - N - 1])/phi/hy/hy
     return Swdiff
 
 def updatePlot(Sw_plot,i):
@@ -1553,6 +1559,8 @@ p       = FVM_pressure_CG(np.zeros(N*M), Sw, PreCon)
 print("Calculated initial pressure")
 Swt     = FVM_Sw_t_3(p,Sw)
 print("Compiled FVM_Sw_t_3")
+Swt     = FVM_diffusion(Sw)
+print("Compiled FVM_diffusion")
 
 # set up continuous plotting
 if contPlotting:
@@ -1580,19 +1588,22 @@ if contPlotting:
 for i in tqdm.tqdm(range(Tstep)):
     Sw0 = Sw
     error = 1
+
     PreCon = FVM_pressure_Precon(Sw)
+    p = FVM_pressure_CG(p, Sw, PreCon)
     while error > epsEulerBack:
-        p       = FVM_pressure_CG(p, Sw, PreCon)
-        Swt     = FVM_Sw_t_3(p,Sw)
+        Swt     = FVM_Sw_t_3(p,Sw) + alpha*FVM_diffusion(Sw)
         Sw_new  = Sw0 + dt * Swt
 
-        error   = np.linalg.norm(np.divide(Sw_new-Sw,Sw0),np.inf)
+        error   = np.linalg.norm(np.divide(Sw_new-Sw,Sw0),2)
         Sw      = Sw_new
         # print(error)
 
-    if i%1 == 0 and contPlotting:
+    # Sw +=  dt*alpha*FVM_diffusion(Sw)
+    if i%ItPlot == 0 and contPlotting:
         Sw_plot = FVM_plot_Sw(Sw)
         updatePlot(Sw_plot, i)
+
 
 
 
@@ -1604,7 +1615,9 @@ if plotting:
     fig=go.Figure(data=[go.Surface(z=Sw_plot,x=np.linspace(0,W,2*N+1),y=np.linspace(0,L,2*M+1))])
     fig.show()
 
-
+Total = np.sum(Sw_plot-S_wc)
+print("Simulated mass:",Total*hx*hy/4*phi)
+print("Analytical mass:",u_inj*W*dt*Tstep)
 
 
 

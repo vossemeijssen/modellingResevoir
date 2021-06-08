@@ -1,6 +1,7 @@
 from numba import jit
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
 from mpl_toolkits.mplot3d import Axes3D
 import tqdm
 import math
@@ -11,13 +12,15 @@ from timeit import timeit
 import scipy
 import random
 import time
+import os
+import json
 
 
 ## general grid values (note that y dir is injection direction)
 hx = 0.05    # x spacing
 hy = 0.05    # y spacing
 W  = 3.0      # x width
-L  = 4.5      # y width
+L  = 18      # y width
 
 ## disturbance
 kNum = [3]      # list of k values
@@ -33,7 +36,7 @@ contPlotting = True     # contour plots during simulation (notes this takes some
 ItPlot   = 50           # how often we plot the continuous plot
 
 # how much time to simulate
-t_end = 0.2
+t_end = 0.8
 
 ## accuracy targets
 epsSolver = 1e-10        # accuracy target for pressure solver
@@ -1515,20 +1518,34 @@ def FVM_diffusion(SwInput):
                     Swdiff[indexSwDiff] = (SwInput[indexSwDiff + 1] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - 1])/phi/hx/hx + (SwInput[indexSwDiff + N + 1] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - N - 1])/phi/hy/hy
     return Swdiff
 
-def updatePlot(Sw_plot,i):
+def updatePlot(Sw_plot,i, cmapa, norma, cmapb, normb):
     ax.clear()
     # ax.plot_surface(Xsw, Ysw, Sw_plot, cmap="coolwarm", linewidth=0, antialiased=True)
     # ax.view_init(20, 120-60*i/Tstep)
-    ax.contourf(Xsw,Ysw,Sw_plot,np.linspace(S_wc,1-S_or,20))
+    ax.contourf(Xsw,Ysw,Sw_plot,np.linspace(S_wc,1-S_or,20), cmap=cmapa, norm=norma)
 
     bx.clear()
     # bx.plot_surface(Xp, Yp, p.reshape(M, N), cmap="coolwarm", linewidth=0, antialiased=False)
     # bx.view_init(20, 120 - 60 * i / Tstep)
-    bx.contourf(Xp, Yp, p.reshape(M, N),np.linspace(0,max(p),25))
+    bx.contourf(Xp, Yp, p.reshape(M, N),np.linspace(0,max(p),25), cmap=cmapb, norm=normb)
 
     fig.canvas.draw()
     fig.canvas.flush_events()
 
+def analyseWaveFront(Sw_plot, W, L):
+    Sw_thresh = 0.11
+    wavefront_indices = np.argmin(Sw_plot >= Sw_thresh, axis=0) # extract the first occurence of a False value
+    wavefront_fft = np.fft.fft(wavefront_indices - np.mean(wavefront_indices))
+    nr_waves = np.argmax(abs(wavefront_fft))
+    wavefront_period = W/nr_waves
+    extension = (max(wavefront_indices) - min(wavefront_indices)) * L / (Sw_plot.shape[0] - 1)
+    return (wavefront_period, extension)
+    
+def getWaveFront(Sw_plot):
+    Sw_thresh = 0.11
+    wavefront_y = np.argmin(Sw_plot >= Sw_thresh, axis=0) / (Sw_plot.shape[0] - 1) * L
+    return wavefront_y
+    
 
 ##############  start of the code  ###############
 # pre calculations of the 1D problem to find dt
@@ -1576,15 +1593,23 @@ if contPlotting:
     fig = plt.figure()
 
     ax = fig.add_subplot(1, 2, 1)
-    ax.contourf(Xsw,Ysw,Sw_plot,np.linspace(S_wc,1-S_or,30))
+    cmapa = plt.cm.get_cmap('viridis')
+    norma = matplotlib.colors.Normalize(vmin=0, vmax=1)
+    ax.contourf(Xsw,Ysw,Sw_plot,np.linspace(S_wc,1-S_or,30), cmap=cmapa, norm=norma)
+    plt.colorbar(matplotlib.cm.ScalarMappable(norm=norma, cmap=cmapa), ax=ax)
 
+    cmapb = plt.cm.get_cmap('inferno')
     bx = fig.add_subplot(1, 2, 2)
-    bx.contourf(Xp,Yp,p.reshape(M,N),np.linspace(0,max(p),50))
+    normb = matplotlib.colors.Normalize(vmin=min(p), vmax=max(p))
+    bx.contourf(Xp,Yp,p.reshape(M,N),np.linspace(0,max(p),50), cmap=cmapb)
+    plt.colorbar(matplotlib.cm.ScalarMappable(norm=normb, cmap=cmapb), ax=bx)
 
     fig.canvas.draw()
     fig.canvas.flush_events()
 
 # run newton backward solver
+wavefront_y = []
+store_path = os.getcwd() + '/wavefront.json'
 for i in tqdm.tqdm(range(Tstep)):
     Sw0 = Sw
     error = 1
@@ -1600,12 +1625,42 @@ for i in tqdm.tqdm(range(Tstep)):
         # print(error)
 
     # Sw +=  dt*alpha*FVM_diffusion(Sw)
+    Sw_plot = FVM_plot_Sw(Sw)
     if i%ItPlot == 0 and contPlotting:
-        Sw_plot = FVM_plot_Sw(Sw)
-        updatePlot(Sw_plot, i)
+        updatePlot(Sw_plot, i, cmapa, norma, cmapb, normb)
+    wavefront_y.append(list(getWaveFront(Sw_plot)))
+    
+storage_dict = { # Contains all relevant parameters and the wavefront data
+    'wavefront':wavefront_y,
+    'W':W,
+    'L':L,
+    'hx': hx,
+    'hy': hy,
+    't_end': t_end,
+    'epsSolver': epsSolver,
+    'epsEulerBack': epsEulerBack,
+    'alpha': alpha,
+    'phi': phi,
+    'u_inj': u_inj,
+    'mu_w': mu_w,
+    'mu_o': mu_o,
+    'kappa': kappa,
+    'k_rw0': k_rw0,
+    'k_ro0': k_ro0,
+    'n_w': n_w,
+    'n_o': n_o,
+    'S_or': S_or,
+    'S_wc': S_wc,
+    'sigma': sigma,
+    'labda': labda,
+    'dx': dx,
+    'kNum': kNum,
+    'delta': delta,
+    'jdx': jdx,
+    }
 
-
-
+with open(store_path, 'w') as file:
+    json.dump(storage_dict, file, indent=4)
 
 # plotting
 if plotting:

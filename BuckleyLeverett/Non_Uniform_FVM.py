@@ -14,6 +14,7 @@ import random
 import time
 import os
 import json
+import shutil
 
 
 ## general grid values (note that y dir is injection direction)
@@ -1518,7 +1519,7 @@ def FVM_diffusion(SwInput):
                     Swdiff[indexSwDiff] = (SwInput[indexSwDiff + 1] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - 1])/phi/hx/hx + (SwInput[indexSwDiff + N + 1] - 2*SwInput[indexSwDiff] + SwInput[indexSwDiff - N - 1])/phi/hy/hy
     return Swdiff
 
-def updatePlot(Sw_plot,i, cmapa, norma, cmapb, normb):
+def updatePlot(Sw_plot,i, cmapa, norma, cmapb, normb, plots_path=os.getcwd()+'/plots'):
     ax.clear()
     # ax.plot_surface(Xsw, Ysw, Sw_plot, cmap="coolwarm", linewidth=0, antialiased=True)
     # ax.view_init(20, 120-60*i/Tstep)
@@ -1531,6 +1532,7 @@ def updatePlot(Sw_plot,i, cmapa, norma, cmapb, normb):
 
     fig.canvas.draw()
     fig.canvas.flush_events()
+    fig.savefig(os.getcwd()+'/plots/Sw_p_'+str(i)+'.png')
 
 def analyseWaveFront(Sw_plot, W, L):
     Sw_thresh = 0.11
@@ -1607,9 +1609,16 @@ if contPlotting:
     fig.canvas.draw()
     fig.canvas.flush_events()
 
-# run newton backward solver
+
 wavefront_y = []
+extensions = []
 store_path = os.getcwd() + '/wavefront.json'
+plots_path = os.getcwd()+'/plots'
+if os.path.exists(plots_path):
+    shutil.rmtree(plots_path)
+os.mkdir(plots_path)
+
+# run newton backward solver
 for i in tqdm.tqdm(range(Tstep)):
     Sw0 = Sw
     error = 1
@@ -1629,7 +1638,11 @@ for i in tqdm.tqdm(range(Tstep)):
     if i%ItPlot == 0 and contPlotting:
         updatePlot(Sw_plot, i, cmapa, norma, cmapb, normb)
     wavefront_y.append(list(getWaveFront(Sw_plot)))
+    wavefront_period, extension = analyseWaveFront(Sw_plot, W, L)
     
+    extensions.append(extension)
+    
+updatePlot(Sw_plot, Tstep, cmapa, norma, cmapb, normb, plots_path) # also plot the last time step
 storage_dict = { # Contains all relevant parameters and the wavefront data
     'wavefront':wavefront_y,
     'W':W,
@@ -1661,6 +1674,10 @@ storage_dict = { # Contains all relevant parameters and the wavefront data
 
 with open(store_path, 'w') as file:
     json.dump(storage_dict, file, indent=4)
+
+plt.figure()
+plt.plot(range(Tstep),extensions)
+plt.savefig(os.getcwd() + '/wave_extension.svg')
 
 # plotting
 if plotting:

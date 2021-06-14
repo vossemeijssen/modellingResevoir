@@ -15,21 +15,28 @@ import time
 import os
 import json
 import shutil
+import sys
+import psutil
+
 
 
 ## general grid values (note that y dir is injection direction)
-hx = 0.05    # x spacing
-hy = 0.05    # y spacing
+hx = 5e-3    # x spacing
+hy = 5e-3    # y spacing
 W  = 3.0      # x width
-L  = 18      # y width
+L  = 1      # y width
 
 ## disturbance
-kNum = [3]      # list of k values
+if len(sys.argv) == 2:
+    kNum = [float(sys.argv[1])]
+    print('Value of kNum was interpreted as '+ str(kNum) +' from the commandline input ' + sys.argv[1])
+else:
+    kNum = [3]      # list of k values
 delta = 0.5     # total height of total disturbance
 jdx = 0         # where the disturbance is applied (do not touch)
 
 ## beun factor, how much more time steps we take, only increase it if the model does not converge
-beun_factor  = 10
+beun_factor  = 15
 
 ## plotting stuff
 plotting = True         # nice 3d plot at the end
@@ -37,7 +44,7 @@ contPlotting = True     # contour plots during simulation (notes this takes some
 ItPlot   = 50           # how often we plot the continuous plot
 
 # how much time to simulate
-t_end = 0.8
+t_end = 0.05
 
 ## accuracy targets
 epsSolver = 1e-10        # accuracy target for pressure solver
@@ -1529,10 +1536,11 @@ def updatePlot(Sw_plot,i, cmapa, norma, cmapb, normb, plots_path=os.getcwd()+'/p
     # bx.plot_surface(Xp, Yp, p.reshape(M, N), cmap="coolwarm", linewidth=0, antialiased=False)
     # bx.view_init(20, 120 - 60 * i / Tstep)
     bx.contourf(Xp, Yp, p.reshape(M, N),np.linspace(0,max(p),25), cmap=cmapb, norm=normb)
-
+    
+    plt.title('t = ' + str(round(i/Tstep*t_end, 3)))
     fig.canvas.draw()
     fig.canvas.flush_events()
-    fig.savefig(os.getcwd()+'/plots/Sw_p_'+str(i)+'.png')
+    fig.savefig(os.getcwd()+'/plots/Sw_p_'+str(int(i/ItPlot))+'.png')
 
 def analyseWaveFront(Sw_plot, W, L):
     Sw_thresh = 0.11

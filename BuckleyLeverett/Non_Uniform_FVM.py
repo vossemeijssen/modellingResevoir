@@ -21,30 +21,31 @@ import shutil
 hx = 0.05    # x spacing
 hy = 0.05    # y spacing
 W  = 3.0      # x width
-L  = 18      # y width
+L  = 2.3      # y width
 
 ## disturbance
 kNum = [3]      # list of k values
-delta = 0.5     # total height of total disturbance
+delta = 0     # total height of total disturbance
 jdx = 0         # where the disturbance is applied (do not touch)
 
 ## beun factor, how much more time steps we take, only increase it if the model does not converge
 beun_factor  = 10
 
 ## plotting stuff
-plotting = True         # nice 3d plot at the end
-contPlotting = True     # contour plots during simulation (notes this takes some time to compute, it limits the number of iterations per second to 2 for me)
-ItPlot   = 50           # how often we plot the continuous plot
+WaveAnalyse  = False
+plotting = False         # nice 3d plot at the end
+contPlotting = False     # contour plots during simulation (notes this takes some time to compute, it limits the number of iterations per second to 2 for me)
+ItPlot   = 1           # how often we plot the continuous plot
 
 # how much time to simulate
-t_end = 0.8
+t_end = 0.1
 
 ## accuracy targets
 epsSolver = 1e-10        # accuracy target for pressure solver
 epsEulerBack = 1e-7     # accuracy for Euler Backward step
 
 # constants, change them here
-alpha = 0.005
+alpha = 0.0
 c = Constants(
     phi = 0.1,  # Porosity
     u_inj = 1.0,  # Water injection speed
@@ -53,7 +54,7 @@ c = Constants(
     kappa = 1,
     k_rw0 = 1,
     k_ro0 = 1,
-    n_w = 2.2,  # >=1
+    n_w = 2,  # >=1
     n_o = 2,  # >=1
     S_or = 0.1,  # Oil rest-saturation
     S_wc = 0.1,
@@ -1581,6 +1582,8 @@ print("Compiled FVM_Sw_t_3")
 Swt     = FVM_diffusion(Sw)
 print("Compiled FVM_diffusion")
 
+
+
 # set up continuous plotting
 if contPlotting:
     x = np.linspace(0,W,2*N+1)
@@ -1610,6 +1613,7 @@ if contPlotting:
     fig.canvas.flush_events()
 
 
+
 wavefront_y = []
 extensions = []
 store_path = os.getcwd() + '/wavefront.json'
@@ -1637,47 +1641,57 @@ for i in tqdm.tqdm(range(Tstep)):
     Sw_plot = FVM_plot_Sw(Sw)
     if i%ItPlot == 0 and contPlotting:
         updatePlot(Sw_plot, i, cmapa, norma, cmapb, normb)
-    wavefront_y.append(list(getWaveFront(Sw_plot)))
-    wavefront_period, extension = analyseWaveFront(Sw_plot, W, L)
-    
-    extensions.append(extension)
-    
-updatePlot(Sw_plot, Tstep, cmapa, norma, cmapb, normb, plots_path) # also plot the last time step
-storage_dict = { # Contains all relevant parameters and the wavefront data
-    'wavefront':wavefront_y,
-    'W':W,
-    'L':L,
-    'hx': hx,
-    'hy': hy,
-    't_end': t_end,
-    'epsSolver': epsSolver,
-    'epsEulerBack': epsEulerBack,
-    'alpha': alpha,
-    'phi': phi,
-    'u_inj': u_inj,
-    'mu_w': mu_w,
-    'mu_o': mu_o,
-    'kappa': kappa,
-    'k_rw0': k_rw0,
-    'k_ro0': k_ro0,
-    'n_w': n_w,
-    'n_o': n_o,
-    'S_or': S_or,
-    'S_wc': S_wc,
-    'sigma': sigma,
-    'labda': labda,
-    'dx': dx,
-    'kNum': kNum,
-    'delta': delta,
-    'jdx': jdx,
-    }
 
-with open(store_path, 'w') as file:
-    json.dump(storage_dict, file, indent=4)
+    if WaveAnalyse:
+        wavefront_y.append(list(getWaveFront(Sw_plot)))
+        wavefront_period, extension = analyseWaveFront(Sw_plot, W, L)
+
+        extensions.append(extension)
 
 plt.figure()
-plt.plot(range(Tstep),extensions)
-plt.savefig(os.getcwd() + '/wave_extension.svg')
+x = np.linspace(0, W, 2 * N + 1)
+y = np.linspace(0, L, 2 * M + 1)
+Xsw, Ysw = np.meshgrid(x, y)
+plt.contourf(Xsw,Ysw,Sw_plot,np.linspace(S_wc,1-S_or,30))
+plt.show()
+
+if WaveAnalyse:
+    updatePlot(Sw_plot, Tstep, cmapa, norma, cmapb, normb, plots_path) # also plot the last time step
+    storage_dict = { # Contains all relevant parameters and the wavefront data
+        'wavefront':wavefront_y,
+        'W':W,
+        'L':L,
+        'hx': hx,
+        'hy': hy,
+        't_end': t_end,
+        'epsSolver': epsSolver,
+        'epsEulerBack': epsEulerBack,
+        'alpha': alpha,
+        'phi': phi,
+        'u_inj': u_inj,
+        'mu_w': mu_w,
+        'mu_o': mu_o,
+        'kappa': kappa,
+        'k_rw0': k_rw0,
+        'k_ro0': k_ro0,
+        'n_w': n_w,
+        'n_o': n_o,
+        'S_or': S_or,
+        'S_wc': S_wc,
+        'sigma': sigma,
+        'labda': labda,
+        'dx': dx,
+        'kNum': kNum,
+        'delta': delta,
+        'jdx': jdx,
+        }
+
+    with open(store_path, 'w') as file:
+        json.dump(storage_dict, file, indent=4)
+
+    plt.figure()
+    plt.plot(range(Tstep),extensions)
+    plt.savefig(os.getcwd() + '/wave_extension.svg')
 
 # plotting
 if plotting:
